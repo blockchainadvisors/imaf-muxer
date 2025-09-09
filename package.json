@@ -1,0 +1,33 @@
+{
+  "name": "imaf-mux",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build:js": "esbuild src/index.ts --bundle --format=esm --platform=node --minify --outfile=dist/imaf-mux.min.js",
+    "build:types": "dts-bundle-generator -o dist/imaf-mux.min.d.ts src/index.ts",
+    "pack:dist": "node -e \"const fs=require('fs');const keep=new Set(['imaf-mux.min.js','imaf-mux.min.d.ts']);fs.readdirSync('dist').forEach(n=>!keep.has(n)&&fs.rmSync('dist/'+n,{recursive:true,force:true}))\"",
+    "build": "npm run clean && npm run build:js && npm run build:types && npm run pack:dist",
+    "start": "tsx scripts/audio-tracks-to-imaf.ts"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/imaf-mux.min.js",
+      "types": "./dist/imaf-mux.min.d.ts"
+    }
+  },
+  "types": "./dist/imaf-mux.min.d.ts",
+  "files": [
+    "dist/imaf-mux.min.js",
+    "dist/imaf-mux.min.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "devDependencies": {
+    "dts-bundle-generator": "^9.5.1",
+    "esbuild": "^0.25.9",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.4"
+  }
+}
