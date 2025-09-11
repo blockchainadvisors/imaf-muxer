@@ -1,0 +1,70 @@
+{
+  "album": {
+    "title": "Pulse Mechanics",
+    "artist": "Compilation",
+    "genre": "Techno",
+    "releaseDate": "2025-01-31",
+    "production": "GridWorks Collective",
+    "publisher": "Vector Audio",
+    "copyright": "© 2025 Vector Audio",
+    "coverUrl": "/covers/pulse-mechanics.svg",
+    "siteUrl": "/albums/pulse-mechanics"
+  },
+  "song": {
+    "title": "Kinetic Loop",
+    "singer": "Instrumental",
+    "composer": "D. Heller",
+    "lyricist": "",
+    "genre": "Techno",
+    "releaseDate": "2025-01-31",
+    "production": "GridWorks Collective",
+    "publisher": "Vector Audio",
+    "copyright": "℗ 2025 Vector Audio",
+    "isrc": "USVEC2500456",
+    "cdTrackNo": "3",
+    "imageUrl": "/songs/kinetic-loop.png",
+    "siteUrl": "/songs/kinetic-loop"
+  },
+  "tracks": [
+    {
+      "index": 1,
+      "meta": {
+        "title": "Phase Shift",
+        "performer": "MonoGrid",
+        "recordedAt": "Warehouse 9, Berlin"
+      }
+    },
+    {
+      "index": 2,
+      "meta": {
+        "title": "Resonant Body",
+        "performer": "Helix State",
+        "recordedAt": "GridWorks Lab 2"
+      }
+    },
+    {
+      "index": 3,
+      "meta": {
+        "title": "Kinetic Loop",
+        "performer": "D. Heller",
+        "recordedAt": "Vector Audio Main Room"
+      }
+    },
+    {
+      "index": 4,
+      "meta": {
+        "title": "Control Voltage",
+        "performer": "Patchfield",
+        "recordedAt": "Sublevel Studio C"
+      }
+    },
+    {
+      "index": 5,
+      "meta": {
+        "title": "Exit Node",
+        "performer": "Port 443",
+        "recordedAt": "Live at Steelworks, 2024-12-12"
+      }
+    }
+  ]
+}

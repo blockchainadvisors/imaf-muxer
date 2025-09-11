@@ -1,12 +1,12 @@
-#!/usr/bin/env tsx
+// scripts/ima-extract.ts
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
-  readIma,
-  buildAdtsStream,
-  buildMp3Stream,
-  buildWavFile,
-  buildTx3g3gpFile,
+  readIma, 
+  buildAdtsStream, buildMp3Stream, buildWavFile, buildTx3g3gpFile, 
+  collectMpeg7Metas, decodeXmlBytes, 
+  mpeg7XmlToAlbum, mpeg7XmlToSong, mpeg7XmlToTrack,
+  withAlbumDefaults, withSongDefaults, withTrackDefaults
 } from "../dist/imaf-mux.min.js";
 
 const [, , inPath, outDirArg] = process.argv;
@@ -20,9 +20,11 @@ fs.mkdirSync(outDir, { recursive: true });
 
 const buf = fs.readFileSync(inPath);
 const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+
 const { audio, texts } = readIma(ab);
 console.log(`[dump] audio tracks: ${audio.length} text tracks: ${texts.length}`);
 
+// ------------ audio dump (unchanged) ------------
 let aIdx = 0;
 for (const a of audio) {
   aIdx++;
@@ -38,8 +40,10 @@ for (const a of audio) {
   if (a.kind === "aac") {
     const sr = a.sampleRate ?? 44100;
     const ch = a.channels ?? 2;
-    fs.writeFileSync(path.join(outDir, `audio${aIdx}.aac`),
-      buildAdtsStream(a.frames, { sr, ch, aot: a.aot ?? 2, first2: a.first2 }));
+    fs.writeFileSync(
+      path.join(outDir, `audio${aIdx}.aac`),
+      buildAdtsStream(a.frames, { sr, ch, aot: a.aot ?? 2, first2: a.first2 })
+    );
     continue;
   }
 
@@ -49,10 +53,10 @@ for (const a of audio) {
     continue;
   }
 
-  // Unknown → raw bytes dump
   fs.writeFileSync(path.join(outDir, `audio${aIdx}.bin`), Buffer.concat(a.frames.map(f => Buffer.from(f))));
 }
 
+// ------------ text dump (unchanged) ------------
 let tIdx = 0;
 for (const t of texts) {
   tIdx++;
@@ -60,4 +64,28 @@ for (const t of texts) {
   fs.writeFileSync(path.join(outDir, `subs${tIdx}.${t.language || "und"}.3gp`), file);
 }
 
+// ------------ NEW: MPEG-7 JSON (schema-complete) ------------
+const metas = collectMpeg7Metas(ab);
+
+const albumXml = metas.album?.xml ? decodeXmlBytes(metas.album.xml) : "";
+const songXml  = metas.song?.xml  ? decodeXmlBytes(metas.song.xml)  : "";
+
+const albumMetaFull = withAlbumDefaults(albumXml ? mpeg7XmlToAlbum(albumXml) : {});
+const songMetaFull  = withSongDefaults (songXml  ? mpeg7XmlToSong(songXml)   : {});
+
+const tracksMetaFull = metas.tracks.map(t => {
+  const xml = t.xml ? decodeXmlBytes(t.xml) : "";
+  const partial = xml ? mpeg7XmlToTrack(xml) : {};
+  return { index: t.index, meta: withTrackDefaults(partial) };
+});
+
+const manifest = {
+  album: albumMetaFull,
+  song:  songMetaFull,
+  tracks: tracksMetaFull
+};
+
+fs.writeFileSync(path.join(outDir, "meta.json"), JSON.stringify(manifest, null, 2));
+
 console.log(`✓ Extracted ${audio.length} audio track(s) and ${texts.length} text track(s) to ${outDir}`);
+console.log(`✓ Wrote schema-complete MPEG-7 JSON → ${path.join(outDir, "meta.json")}`);

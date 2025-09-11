@@ -1,0 +1,70 @@
+{
+  "album": {
+    "title": "Neon Horizons",
+    "artist": "Various Artists",
+    "genre": "Synthwave",
+    "releaseDate": "2025-02-14",
+    "production": "Aurora Sound Labs",
+    "publisher": "Lumen Records",
+    "copyright": "© 2025 Lumen Records",
+    "coverUrl": "/covers/neon-horizons.jpg",
+    "siteUrl": "/albums/neon-horizons"
+  },
+  "song": {
+    "title": "Midnight Drive",
+    "singer": "Luca Ray",
+    "composer": "A. Renner",
+    "lyricist": "K. Ito",
+    "genre": "Synthwave",
+    "releaseDate": "2025-02-14",
+    "production": "Aurora Sound Labs",
+    "publisher": "Lumen Records",
+    "copyright": "℗ 2025 Lumen Records",
+    "isrc": "USLUM2500001",
+    "cdTrackNo": "1",
+    "imageUrl": "/songs/midnight-drive.jpg",
+    "siteUrl": "/songs/midnight-drive"
+  },
+  "tracks": [
+    {
+      "index": 1,
+      "meta": {
+        "title": "Midnight Drive",
+        "performer": "Luca Ray",
+        "recordedAt": "Skyline Room, Aurora Sound Labs"
+      }
+    },
+    {
+      "index": 2,
+      "meta": {
+        "title": "City Lights",
+        "performer": "Aya Noir",
+        "recordedAt": "Neon Booth, Aurora Sound Labs"
+      }
+    },
+    {
+      "index": 3,
+      "meta": {
+        "title": "Starlit Overpass",
+        "performer": "VHS Tigers",
+        "recordedAt": "Nightshift Studio A"
+      }
+    },
+    {
+      "index": 4,
+      "meta": {
+        "title": "Analog Dreams",
+        "performer": "Pulse Vector",
+        "recordedAt": "Mag-Tape Room, North Pier"
+      }
+    },
+    {
+      "index": 5,
+      "meta": {
+        "title": "Dawn Patrol",
+        "performer": "Noctis & Nova",
+        "recordedAt": "Live at Glasshouse, 2024-11-08"
+      }
+    }
+  ]
+}

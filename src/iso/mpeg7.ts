@@ -111,3 +111,146 @@ export function mpeg7TrackXML(t: TrackMeta) {
   </Description>
 </MPEG7>`;
 }
+
+// --- XML → JSON helpers (add below existing exports) ---
+export function decodeXmlBytes(xb: Uint8Array): string {
+  if (xb.length >= 2 && xb[0] === 0xFF && xb[1] === 0xFE) return new TextDecoder("utf-16le").decode(xb);
+  if (xb.length >= 2 && xb[0] === 0xFE && xb[1] === 0xFF) return new TextDecoder("utf-16be").decode(xb);
+  if (xb.length >= 3 && xb[0] === 0xEF && xb[1] === 0xBB && xb[2] === 0xBF) return new TextDecoder("utf-8").decode(xb);
+  if (xb.length >= 2 && xb[0] === 0x00) return new TextDecoder("utf-16be").decode(xb);
+  if (xb.length >= 2 && xb[1] === 0x00) return new TextDecoder("utf-16le").decode(xb);
+  return new TextDecoder("utf-8", { fatal: false }).decode(xb);
+}
+
+const pick = (xml: string, re: RegExp) => re.exec(xml)?.[1]?.trim();
+const pickAttr = (xml: string, tagRE: RegExp, attr: string) => {
+  const m = tagRE.exec(xml); if (!m) return;
+  const t = m[0];
+  const a = new RegExp(`${attr}\\s*=\\s*"([^"]*)"`, "i").exec(t);
+  return a?.[1]?.trim();
+};
+
+// ------------------------------
+// NEW: field lists + defaults
+// ------------------------------
+export const ALBUM_FIELDS: (keyof AlbumMeta)[] = [
+  "title", "artist", "genre", "releaseDate", "production", "publisher", "copyright", "coverUrl", "siteUrl"
+];
+
+export const SONG_FIELDS: (keyof SongMeta)[] = [
+  "title", "singer", "composer", "lyricist", "genre", "releaseDate", "production", "publisher", "copyright", "isrc", "cdTrackNo", "imageUrl", "siteUrl"
+];
+
+export const TRACK_FIELDS: (keyof TrackMeta)[] = [
+  "title", "performer", "recordedAt"
+];
+
+export function albumDefaults(): AlbumMeta {
+  return {
+    title: "",
+    artist: "",
+    genre: "",
+    releaseDate: "",
+    production: "",
+    publisher: "",
+    copyright: "",
+    coverUrl: "",
+    siteUrl: ""
+  };
+}
+
+export function songDefaults(): SongMeta {
+  return {
+    title: "",
+    singer: "",
+    composer: "",
+    lyricist: "",
+    genre: "",
+    releaseDate: "",
+    production: "",
+    publisher: "",
+    copyright: "",
+    isrc: "",
+    cdTrackNo: "",
+    imageUrl: "",
+    siteUrl: ""
+  };
+}
+
+export function trackDefaults(): TrackMeta {
+  return {
+    title: "",
+    performer: "",
+    recordedAt: ""
+  };
+}
+
+export function withAlbumDefaults(p?: Partial<AlbumMeta>): AlbumMeta {
+  const base = albumDefaults();
+  const src = p || {};
+  for (const k of ALBUM_FIELDS) (base as any)[k] = (src as any)[k] ?? "";
+  return base;
+}
+
+export function withSongDefaults(p?: Partial<SongMeta>): SongMeta {
+  const base = songDefaults();
+  const src = p || {};
+  for (const k of SONG_FIELDS) (base as any)[k] = (src as any)[k] ?? "";
+  return base;
+}
+
+export function withTrackDefaults(p?: Partial<TrackMeta>): TrackMeta {
+  const base = trackDefaults();
+  const src = p || {};
+  for (const k of TRACK_FIELDS) (base as any)[k] = (src as any)[k] ?? "";
+  return base;
+}
+
+// ------------------------------
+// simple XML→JSON mappers
+// return Partial<...>, and callers  wrap with
+// withAlbumDefaults/withSongDefaults/withTrackDefaults.
+// ------------------------------
+export function mpeg7XmlToAlbum(xml: string): Partial<AlbumMeta> {
+  // minimal, tag-name tolerant
+  const get = (re: RegExp) => (xml.match(re)?.[1] ?? "").trim();
+  return {
+    title: get(/<Title>(.*?)<\/Title>/i),
+    artist: get(/<Creator>.*?<Name>(.*?)<\/Name>.*?<\/Creator>/is),
+    genre: get(/<Classification>(.*?)<\/Classification>/i),
+    releaseDate: get(/<ReleaseInformation>(.*?)<\/ReleaseInformation>/i),
+    production: get(/<Production>(.*?)<\/Production>/i),
+    publisher: get(/<Publisher>(.*?)<\/Publisher>/i),
+    copyright: get(/<Rights>(.*?)<\/Rights>/i),
+    coverUrl: get(/<MediaLocator[^>]*href="([^"]*)"/i),
+    siteUrl: get(/<RelatedMaterial[^>]*href="([^"]*)"/i),
+  };
+}
+
+export function mpeg7XmlToSong(xml: string): Partial<SongMeta> {
+  const get = (re: RegExp) => (xml.match(re)?.[1] ?? "").trim();
+  return {
+    title: get(/<Title>(.*?)<\/Title>/i),
+    singer: get(/<Creator>.*?<Name>(.*?)<\/Name>.*?<\/Creator>/is),
+    composer: get(/<Contributor>.*?<Role>Composer<\/Role>\s*<Name>(.*?)<\/Name>.*?<\/Contributor>/is),
+    lyricist: get(/<Contributor>.*?<Role>Lyricist<\/Role>\s*<Name>(.*?)<\/Name>.*?<\/Contributor>/is),
+    genre: get(/<Classification>(.*?)<\/Classification>/i),
+    releaseDate: get(/<ReleaseInformation>(.*?)<\/ReleaseInformation>/i),
+    production: get(/<Production>(.*?)<\/Production>/i),
+    publisher: get(/<Publisher>(.*?)<\/Publisher>/i),
+    copyright: get(/<Rights>(.*?)<\/Rights>/i),
+    isrc: get(/<ISRC>(.*?)<\/ISRC>/i),
+    cdTrackNo: get(/<CDTrackNo>(.*?)<\/CDTrackNo>/i),
+    imageUrl: get(/<MediaLocator[^>]*href="([^"]*)"/i),
+    siteUrl: get(/<RelatedMaterial[^>]*href="([^"]*)"/i),
+  };
+}
+
+export function mpeg7XmlToTrack(xml: string): Partial<TrackMeta> {
+  const get = (re: RegExp) => (xml.match(re)?.[1] ?? "").trim();
+  return {
+    title: get(/<Title>(.*?)<\/Title>/i),
+    performer: get(/<Creator>.*?<Name>(.*?)<\/Name>.*?<\/Creator>/is),
+    recordedAt: get(/<Location>(.*?)<\/Location>/i),
+  };
+}

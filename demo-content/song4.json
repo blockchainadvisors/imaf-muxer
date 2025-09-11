@@ -1,0 +1,70 @@
+{
+  "album": {
+    "title": "Golden Hour Gospel",
+    "artist": "Various",
+    "genre": "Gospel/Soul",
+    "releaseDate": "2025-04-13",
+    "production": "New Dawn Records",
+    "publisher": "Halcyon Music Group",
+    "copyright": "© 2025 Halcyon Music",
+    "coverUrl": "/covers/golden-hour-gospel.jpg",
+    "siteUrl": "/albums/golden-hour-gospel"
+  },
+  "song": {
+    "title": "Lift Me",
+    "singer": "Amara Joy",
+    "composer": "Amara Joy, C. Bennett",
+    "lyricist": "C. Bennett",
+    "genre": "Gospel",
+    "releaseDate": "2025-04-13",
+    "production": "New Dawn Records",
+    "publisher": "Halcyon Music Group",
+    "copyright": "℗ 2025 Halcyon Music",
+    "isrc": "USHAL2500789",
+    "cdTrackNo": "1",
+    "imageUrl": "/songs/lift-me.jpg",
+    "siteUrl": "/songs/lift-me"
+  },
+  "tracks": [
+    {
+      "index": 1,
+      "meta": {
+        "title": "Lift Me",
+        "performer": "Amara Joy & The Dawn Choir",
+        "recordedAt": "New Dawn Studio B, Nashville"
+      }
+    },
+    {
+      "index": 2,
+      "meta": {
+        "title": "Hands to the Sky",
+        "performer": "The Dawn Choir",
+        "recordedAt": "New Dawn Studio A"
+      }
+    },
+    {
+      "index": 3,
+      "meta": {
+        "title": "Testify",
+        "performer": "Amara Joy",
+        "recordedAt": "New Dawn Studio B"
+      }
+    },
+    {
+      "index": 4,
+      "meta": {
+        "title": "River of Mercy",
+        "performer": "Halcyon Ensemble",
+        "recordedAt": "St. Elara Hall, Room Mic Session"
+      }
+    },
+    {
+      "index": 5,
+      "meta": {
+        "title": "Homecoming",
+        "performer": "Amara Joy & Friends",
+        "recordedAt": "Live at Beacon Theater, 2025-02-28"
+      }
+    }
+  ]
+}

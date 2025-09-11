@@ -1,0 +1,70 @@
+{
+  "album": {
+    "title": "Pacific Chillhop, Vol. 1",
+    "artist": "Various",
+    "genre": "Lo-fi Hip-Hop",
+    "releaseDate": "2025-05-30",
+    "production": "Blue Tide Collective",
+    "publisher": "Seafloor Beats",
+    "copyright": "© 2025 Seafloor Beats",
+    "coverUrl": "/covers/pacific-chillhop-v1.png",
+    "siteUrl": "/albums/pacific-chillhop-v1"
+  },
+  "song": {
+    "title": "Sea Foam Pages",
+    "singer": "Instrumental",
+    "composer": "kumo:note",
+    "lyricist": "",
+    "genre": "Lo-fi",
+    "releaseDate": "2025-05-30",
+    "production": "Blue Tide Collective",
+    "publisher": "Seafloor Beats",
+    "copyright": "℗ 2025 Seafloor Beats",
+    "isrc": "USSEA2501020",
+    "cdTrackNo": "4",
+    "imageUrl": "/songs/sea-foam-pages.jpg",
+    "siteUrl": "/songs/sea-foam-pages"
+  },
+  "tracks": [
+    {
+      "index": 1,
+      "meta": {
+        "title": "Pier Lights",
+        "performer": "Harbor Kid",
+        "recordedAt": "Apartment Studio, Shibuya"
+      }
+    },
+    {
+      "index": 2,
+      "meta": {
+        "title": "Misty Arcades",
+        "performer": "kumo:note",
+        "recordedAt": "Blue Tide Room A"
+      }
+    },
+    {
+      "index": 3,
+      "meta": {
+        "title": "Breakwater",
+        "performer": "Seafloor Duo",
+        "recordedAt": "Warehouse Loft Sessions"
+      }
+    },
+    {
+      "index": 4,
+      "meta": {
+        "title": "Sea Foam Pages",
+        "performer": "kumo:note",
+        "recordedAt": "Blue Tide Room B"
+      }
+    },
+    {
+      "index": 5,
+      "meta": {
+        "title": "Narrow Streets",
+        "performer": "Harbor Kid",
+        "recordedAt": "Late Night Tram, Field Recording"
+      }
+    }
+  ]
+}

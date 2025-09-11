@@ -26,7 +26,11 @@ export {
     buildMp3Stream,
     buildWavFile,
     buildTx3g3gpFile,
+    collectMpeg7Metas,
 } from "./demux/ima-reader";
+
+// --- MPEG-7 utils ---
+export { decodeXmlBytes, mpeg7XmlToAlbum, mpeg7XmlToSong, mpeg7XmlToTrack, withAlbumDefaults, withSongDefaults, withTrackDefaults } from "./iso/mpeg7";
 
 // Composer
 export { composeImaf } from "./composer/imaf-composer";

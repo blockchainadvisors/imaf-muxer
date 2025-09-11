@@ -1,5 +1,6 @@
 // src/demux/ima-reader.ts
 // Pure ISO-BMFF reader for IMA files: no fs/path; exports helpers that return Buffers.
+import { decodeXmlBytes } from "../iso/mpeg7";
 
 const ENV_DEBUG = (typeof process !== "undefined" && (process as any).env?.IMA_DEBUG) ? (process as any).env.IMA_DEBUG as string : "";
 const DEBUG = new Set(ENV_DEBUG.split(",").map(s => s.trim()).filter(Boolean));
@@ -188,14 +189,16 @@ export function collectMpeg7Metas(ab: ArrayBufferLike): Mpeg7MetaSummary {
   });
   return out;
 }
-function decodeXmlBytes(xb: Uint8Array): string {
-  if (xb.length >= 2 && xb[0] === 0xFF && xb[1] === 0xFE) return new TextDecoder("utf-16le").decode(xb);
-  if (xb.length >= 2 && xb[0] === 0xFE && xb[1] === 0xFF) return new TextDecoder("utf-16be").decode(xb);
-  if (xb.length >= 3 && xb[0] === 0xEF && xb[1] === 0xBB && xb[2] === 0xBF) return new TextDecoder("utf-8").decode(xb);
-  if (xb.length >= 2 && xb[0] === 0x00) return new TextDecoder("utf-16be").decode(xb);
-  if (xb.length >= 2 && xb[1] === 0x00) return new TextDecoder("utf-16le").decode(xb);
-  return new TextDecoder("utf-8", { fatal: false }).decode(xb);
-}
+
+// export function decodeXmlBytes(xb: Uint8Array): string {
+//   if (xb.length >= 2 && xb[0] === 0xFF && xb[1] === 0xFE) return new TextDecoder("utf-16le").decode(xb);
+//   if (xb.length >= 2 && xb[0] === 0xFE && xb[1] === 0xFF) return new TextDecoder("utf-16be").decode(xb);
+//   if (xb.length >= 3 && xb[0] === 0xEF && xb[1] === 0xBB && xb[2] === 0xBF) return new TextDecoder("utf-8").decode(xb);
+//   if (xb.length >= 2 && xb[0] === 0x00) return new TextDecoder("utf-16be").decode(xb);
+//   if (xb.length >= 2 && xb[1] === 0x00) return new TextDecoder("utf-16le").decode(xb);
+//   return new TextDecoder("utf-8", { fatal: false }).decode(xb);
+// }
+
 function prettyXml(xml: string, opts?: { maxLines?: number; maxWidth?: number }): string {
   const maxLines = opts?.maxLines ?? 40; const maxWidth = opts?.maxWidth ?? 120;
   let s = xml.trim().replace(/>\s+</g, "><");

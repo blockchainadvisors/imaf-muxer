@@ -1,0 +1,70 @@
+{
+  "album": {
+    "title": "Album",
+    "artist": "Various",
+    "genre": "Unknown",
+    "releaseDate": "2025-01-01",
+    "production": "",
+    "publisher": "",
+    "copyright": "",
+    "coverUrl": "",
+    "siteUrl": ""
+  },
+  "song": {
+    "title": "Song",
+    "singer": "Unknown",
+    "composer": "",
+    "lyricist": "",
+    "genre": "",
+    "releaseDate": "2025-01-01",
+    "production": "",
+    "publisher": "",
+    "copyright": "",
+    "isrc": "",
+    "cdTrackNo": "",
+    "imageUrl": "",
+    "siteUrl": ""
+  },
+  "tracks": [
+    {
+      "index": 1,
+      "meta": {
+        "title": "Audio Track 1",
+        "performer": "",
+        "recordedAt": ""
+      }
+    },
+    {
+      "index": 2,
+      "meta": {
+        "title": "Audio Track 2",
+        "performer": "",
+        "recordedAt": ""
+      }
+    },
+    {
+      "index": 3,
+      "meta": {
+        "title": "Audio Track 3",
+        "performer": "",
+        "recordedAt": ""
+      }
+    },
+    {
+      "index": 4,
+      "meta": {
+        "title": "Audio Track 4",
+        "performer": "",
+        "recordedAt": ""
+      }
+    },
+    {
+      "index": 5,
+      "meta": {
+        "title": "Track 5",
+        "performer": "",
+        "recordedAt": ""
+      }
+    }
+  ]
+}

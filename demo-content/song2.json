@@ -1,0 +1,70 @@
+{
+  "album": {
+    "title": "Acoustic Daydreams",
+    "artist": "Various",
+    "genre": "Acoustic Folk",
+    "releaseDate": "2025-03-21",
+    "production": "Cedar Grove Studio",
+    "publisher": "Northfield Music",
+    "copyright": "© 2025 Northfield Music",
+    "coverUrl": "/covers/acoustic-daydreams.png",
+    "siteUrl": "/albums/acoustic-daydreams"
+  },
+  "song": {
+    "title": "Willow in the Wind",
+    "singer": "Marin Cole",
+    "composer": "Marin Cole, Theo Park",
+    "lyricist": "Marin Cole",
+    "genre": "Folk",
+    "releaseDate": "2025-03-21",
+    "production": "Cedar Grove Studio",
+    "publisher": "Northfield Music",
+    "copyright": "℗ 2025 Northfield Music",
+    "isrc": "USNFM2500123",
+    "cdTrackNo": "2",
+    "imageUrl": "/songs/willow-in-the-wind.jpg",
+    "siteUrl": "/songs/willow-in-the-wind"
+  },
+  "tracks": [
+    {
+      "index": 1,
+      "meta": {
+        "title": "Quiet Rivers",
+        "performer": "The Cedar Quartet",
+        "recordedAt": "Cedar Grove Studio, Room A"
+      }
+    },
+    {
+      "index": 2,
+      "meta": {
+        "title": "Willow in the Wind",
+        "performer": "Marin Cole",
+        "recordedAt": "Cedar Grove Studio, Live Room"
+      }
+    },
+    {
+      "index": 3,
+      "meta": {
+        "title": "Driftwood Waltz",
+        "performer": "Theo Park",
+        "recordedAt": "Northfield Cabin Sessions"
+      }
+    },
+    {
+      "index": 4,
+      "meta": {
+        "title": "Lantern Glow",
+        "performer": "Marin Cole & Friends",
+        "recordedAt": "Evening Takes, Room B"
+      }
+    },
+    {
+      "index": 5,
+      "meta": {
+        "title": "Field Notes",
+        "performer": "The Cedar Quartet",
+        "recordedAt": "Cedar Grove Studio, Room B"
+      }
+    }
+  ]
+}
