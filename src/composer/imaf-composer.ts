@@ -4,8 +4,8 @@ import { mvhd, tkhd, mdia_for_track, type MuxTrack } from "../iso/audio";
 import { metaBox, xmlBox, udta } from "../iso/meta";
 import { grcoBox, prcoBox, rucoBox, type Group, type Preset, type SelectionRule, type MixingRule } from "../iso/imaf";
 import { mpeg7AlbumXML, mpeg7SongXML, mpeg7TrackXML } from "../iso/mpeg7";
-
-import * as fs from "node:fs";
+import type { MuxTx3gTrack } from "../iso/subtitle";
+import { mdia_for_tx3g } from "../iso/subtitle";
 
 export type ComposeOptions = {
     // File layout (you said you want moov at the end for now)
@@ -19,6 +19,8 @@ export type ComposeOptions = {
 
     // IMAF (set false to skip)
     includeImaf?: boolean;
+
+    subtitleTracks?: MuxTx3gTrack[];
 };
 
 export function composeImaf(tracks: MuxTrack[], opts: ComposeOptions = {}): Buffer {
@@ -26,11 +28,16 @@ export function composeImaf(tracks: MuxTrack[], opts: ComposeOptions = {}): Buff
         layout = "ftyp-mdat-moov",
         movieTimescale = 1000,
         includeImaf = true,
+        subtitleTracks = []
     } = opts;
+
+    // Merge audio + subtitle for payload/offsets
+    type AnyTrack = MuxTrack | MuxTx3gTrack;
+    const allTracks: AnyTrack[] = [...tracks, ...subtitleTracks];
 
     // ---- Payload ----
     const allPayload = Buffer.concat(
-        tracks.flatMap(t => t.frames.map(f => Buffer.from(f.buffer, f.byteOffset, f.byteLength)))
+        allTracks.flatMap(t => t.frames.map(f => Buffer.from(f.buffer, f.byteOffset, f.byteLength)))
     );
     const mdat = box("mdat", allPayload);
 
@@ -39,9 +46,14 @@ export function composeImaf(tracks: MuxTrack[], opts: ComposeOptions = {}): Buff
     // const ftyp = box("ftyp", str("isom"), u32(0x200), str("isom"), str("mp42"), str("im11"));
 
     // ---- Timing ----
-    const movieDurationMv = Math.max(
-        ...tracks.map(t => Math.round(t.mdhdDuration / t.sampleRate * movieTimescale))
-    );
+    // ---- Movie duration: max across all tracks, converted to movieTimescale
+    const durationsMv = allTracks.map(t => {
+        // audio: mdhd units = sampleRate; subs: mdhd units = timescale
+        const srcTs = (t as any).sampleRate ?? (t as any).timescale;
+        return Math.round((t.mdhdDuration / srcTs) * movieTimescale);
+    });
+
+    const movieDurationMv = Math.max(...durationsMv, 0);
 
     // ---- Offsets (we'll support both layouts) ----
     let baseOffset = 0;
@@ -53,7 +65,7 @@ export function composeImaf(tracks: MuxTrack[], opts: ComposeOptions = {}): Buff
     // Compute offsets per track
     const offsetsPerTrack: number[][] = [];
     let cursor = baseOffset;
-    for (const t of tracks) {
+    for (const t of allTracks) {
         const offsets: number[] = [];
         for (let i = 0; i < t.sizes.length; i++) {
             offsets.push(cursor);
@@ -101,15 +113,20 @@ export function composeImaf(tracks: MuxTrack[], opts: ComposeOptions = {}): Buff
     }
 
     // ---- Build traks (+ per-track meta) ----
-    const traks: Buffer[] = tracks.map((t, i) => {
-        const mdia = mdia_for_track(t, offsetsPerTrack[i]);
-        const tmeta = metaBox("mp7t", `Track ${i + 1}`, xmlBox(perTrackXml[i]));
-        return box(
+    const traks = allTracks.map((t, i) => {
+        const isSub = (t as any).kind === "tx3g";
+        const mdia = isSub ? mdia_for_tx3g(t as MuxTx3gTrack, offsetsPerTrack[i])
+            : mdia_for_track(t as MuxTrack, offsetsPerTrack[i]);
+
+        const trackTimescale = (t as any).sampleRate ?? (t as any).timescale;
+        const tk = box(
             "trak",
-            tkhd(i + 1, movieTimescale, t.mdhdDuration, t.sampleRate),
+            tkhd(i + 1, movieTimescale, t.mdhdDuration, trackTimescale),
             mdia,
-            udta(tmeta)
+            // Per-track MPEG-7 (keep your existing tracking)
+            udta(metaBox("mp7t", `Track ${i + 1}`, xmlBox(perTrackXml[i] ?? mpeg7TrackXML({ title: `Track ${i + 1}` }))))
         );
+        return tk;
     });
 
     // ---- moov (with song meta + IMAF) ----
@@ -193,9 +210,4 @@ export function composeImaf(tracks: MuxTrack[], opts: ComposeOptions = {}): Buff
         // ---------- Assemble in ftyp-moov-mdat order ----------
         return Buffer.concat([ftyp, moovFinal, mdat, albumMetaTop]);
     }
-}
-
-export function composeImafToFile(outPath: string, tracks: MuxTrack[], opts?: ComposeOptions) {
-    const out = composeImaf(tracks, opts);
-    fs.writeFileSync(outPath, out);
 }

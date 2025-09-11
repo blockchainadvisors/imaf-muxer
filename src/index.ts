@@ -6,6 +6,8 @@ export { grcoBox, prcoBox, rucoBox } from "./iso/imaf";
 export type { Group, Preset, SelectionRule, MixingRule } from "./iso/imaf";
 export type { MuxTrack } from "./iso/audio";
 export { mpeg7AlbumXML, mpeg7SongXML, mpeg7TrackXML } from "./iso/mpeg7";
+export type { MuxTx3gTrack, SubtitleCue } from "./iso/subtitle";
+export { buildTx3gTrack, tx3gSampleEntry } from "./iso/subtitle";
 
 // --- Codecs / parsers ---
 export { parseAdtsFile } from "./codecs/adts";
@@ -13,6 +15,18 @@ export type { AacTrack } from "./codecs/adts";
 export { parseMp3File } from "./codecs/mp3";
 export { parseWavFile } from "./codecs/wav-pcm";
 export { parseSaocElementaryStream } from "./codecs/saoc";
+export { parseSrt } from "./codecs/srt";
+
+// --- Demuxers / extractors ---
+export { extractAllTx3gTracks, cuesToSrt, extractTx3gMuxTracks } from "./demux/tx3g-demux";
+export type { Tx3gCue } from "./demux/tx3g-demux";
+export {
+    readIma,
+    buildAdtsStream,
+    buildMp3Stream,
+    buildWavFile,
+    buildTx3g3gpFile,
+} from "./demux/ima-reader";
 
 // Composer
-export { composeImaf, composeImafToFile } from "./composer/imaf-composer";
+export { composeImaf } from "./composer/imaf-composer";
