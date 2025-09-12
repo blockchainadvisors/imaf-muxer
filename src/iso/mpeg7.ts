@@ -1,4 +1,4 @@
-//src/lib/mpeg7.ts
+//src/iso/mpeg7.ts
 export interface AlbumMeta {
   title: string;
   artist: string;
@@ -212,7 +212,6 @@ export function withTrackDefaults(p?: Partial<TrackMeta>): TrackMeta {
 // withAlbumDefaults/withSongDefaults/withTrackDefaults.
 // ------------------------------
 export function mpeg7XmlToAlbum(xml: string): Partial<AlbumMeta> {
-  // minimal, tag-name tolerant
   const get = (re: RegExp) => (xml.match(re)?.[1] ?? "").trim();
   return {
     title: get(/<Title>(.*?)<\/Title>/i),
@@ -222,8 +221,10 @@ export function mpeg7XmlToAlbum(xml: string): Partial<AlbumMeta> {
     production: get(/<Production>(.*?)<\/Production>/i),
     publisher: get(/<Publisher>(.*?)<\/Publisher>/i),
     copyright: get(/<Rights>(.*?)<\/Rights>/i),
-    coverUrl: get(/<MediaLocator[^>]*href="([^"]*)"/i),
-    siteUrl: get(/<RelatedMaterial[^>]*href="([^"]*)"/i),
+
+    // use pickAttr (robust to spacing/attr order/namespaces)
+    coverUrl: pickAttr(xml, /<MediaLocator\b[^>]*>/i, "href"),
+    siteUrl: pickAttr(xml, /<RelatedMaterial\b[^>]*>/i, "href"),
   };
 }
 
@@ -241,8 +242,10 @@ export function mpeg7XmlToSong(xml: string): Partial<SongMeta> {
     copyright: get(/<Rights>(.*?)<\/Rights>/i),
     isrc: get(/<ISRC>(.*?)<\/ISRC>/i),
     cdTrackNo: get(/<CDTrackNo>(.*?)<\/CDTrackNo>/i),
-    imageUrl: get(/<MediaLocator[^>]*href="([^"]*)"/i),
-    siteUrl: get(/<RelatedMaterial[^>]*href="([^"]*)"/i),
+
+    // robust attribute reads
+    imageUrl: pickAttr(xml, /<MediaLocator\b[^>]*>/i, "href"),
+    siteUrl: pickAttr(xml, /<RelatedMaterial\b[^>]*>/i, "href"),
   };
 }
 
