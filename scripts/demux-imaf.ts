@@ -1,3 +1,5 @@
+//scripts/demux-imaf.ts
+/** CLI: demux an IMA(.mp4) file into audio, tx3g, MPEG-7 JSON, and IMAF JSON. */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -6,7 +8,14 @@ import {
 } from "../dist/imaf-mux.min.js";
 
 // --- tiny arg parser (no deps) ---
+/** Map of parsed CLI flags. */
 type ArgMap = Record<string, string | boolean | string[]>;
+
+/**
+ * Parse argv into flags and positional args.
+ * @param argv e.g., process.argv.slice(2)
+ * @returns ArgMap with "_" holding positionals.
+ */
 function parseArgs(argv: string[]): ArgMap {
   const out: ArgMap = {};
   const push = (k: string, v: string | boolean = true) => {
@@ -40,6 +49,7 @@ function parseArgs(argv: string[]): ArgMap {
   return out;
 }
 
+/** Print usage and exit(0). */
 function showHelpAndExit() {
   console.log(
 `Usage:
@@ -67,11 +77,14 @@ Debug:
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) showHelpAndExit();
 
+/** Resolve input path (from --in/-i or first positional). */
 const inPath = (args.in as string) || (args.i as string) || (Array.isArray(args._) ? args._[0] : undefined);
 if (!inPath) {
   console.error("error: --in <input.ima> is required\n(use --help for usage)");
   process.exit(1);
 }
+
+/** Output directory (default: <input>_extracted). */
 const outDir =
   (args["out-dir"] as string) ||
   (args.d as string) ||
@@ -84,6 +97,7 @@ const buf = fs.readFileSync(inPath);
 const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 
 // map debug args (scripts do not interpret beyond tokenizing)
+/** Collect debug tokens: "xml", "tree", or "*". */
 const tokens = new Set<string>();
 const dbgArg = args.debug;
 if (typeof dbgArg === "string") dbgArg.split(",").map(s => s.trim()).filter(Boolean).forEach(t => tokens.add(t));
@@ -93,6 +107,7 @@ if (args["debug-xml"]) tokens.add("xml");
 if (args["debug-tree"]) tokens.add("tree");
 
 // Library call → artifacts (no FS inside the library)
+/** Demux options mapped from CLI flags. */
 const demuxOpts: DemuxOptions = {
   wantAudio: !args["no-audio"],
   wantText:  !args["no-text"],

@@ -1,12 +1,22 @@
-//src/lib/adts.ts - parse ADTS AAC files to get raw AAC frames and AudioSpecificConfig
+//src/codecs/adts.ts - parse ADTS AAC files to get raw AAC frames and AudioSpecificConfig
+
+/** Parsed AAC (ADTS) track info for muxing. */
 export type AacTrack = {
+  /** Sampling rate in Hz (from samplingFrequencyIndex). */
   sampleRate: number;
+  /** Channel configuration (1=mono, 2=stereo, etc.). */
   channelConfig: number;
+  /** AudioSpecificConfig (ASC) bytes. */
   asc: Buffer;
+  /** Raw AAC frame payloads (ADTS headers stripped). */
   frames: Buffer[];
+  /** Byte size of each frame in `frames`. */
   sizes: number[];
+  /** Sum of all frame bytes. */
   totalBytes: number;
+  /** Number of frames parsed. */
   frameCount: number;
+  /** mdhd duration in AAC samples (1024 per frame). */
   mdhdDuration: number;
 };
 
@@ -16,6 +26,13 @@ const samplingFreqIndexToRate: Record<number, number> = {
   12: 7350
 };
 
+/**
+ * Parse an ADTS AAC buffer into raw frames and build ASC.
+ * Strips ADTS headers; derives sampleRate/channelConfig from the first frame.
+ * @param buf ADTS file contents.
+ * @returns AacTrack with frames, sizes, ASC, and basic stats.
+ * @throws If no valid ADTS frames are found.
+ */
 export function parseAdtsFile(buf: Buffer): AacTrack {
   let off = 0; let sampleRate = 0, channelConfig = 2;
   const frames: Buffer[] = []; const sizes: number[] = [];

@@ -1,12 +1,19 @@
-//src/lib/mp3.ts - parse MP3 files to get raw MP3 frames and build MP4 sample entry
+//src/codecs/mp3.ts - parse MP3 files to get raw MP3 frames and build MP4 sample entry
 import { box, full, u16, u32, str, concat, fixed16_16 } from '../iso/bytes';
 
+/** Parsed MP3 frame header essentials used for muxing. */
 type Mp3Header = {
+    /** MPEG version (1, 2, or 2.5 encoded as 25). */
     version: 1 | 2 | 25;        // 25 represents MPEG 2.5
+    /** Only Layer III is supported. */
     layer: 3;                    // we only admit Layer III
+    /** Sampling rate in Hz. */
     sampleRate: number;
+    /** 1 mono, 2 stereo. */
     channelCount: number;        // 1: mono, 2: stereo
+    /** Samples per MP3 frame (1152 for v1, 576 for v2/2.5). */
     samplesPerFrame: number;     // 1152 or 576
+    /** Frame byte size (computed later). */
     frameSize: number;           // bytes
 };
 
@@ -20,6 +27,12 @@ const SR_TABLE = {
 const BR_MPEG1_L3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
 const BR_MPEG2_L3 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
 
+/**
+ * Parse an MP3 header at offset.
+ * @param b Byte buffer.
+ * @param off Offset into buffer.
+ * @returns Parsed header or null if invalid.
+ */
 function parseHeader(b: Uint8Array, off: number): Mp3Header | null {
     if (off + 4 > b.length) return null;
     const h = (b[off] << 24) | (b[off + 1] << 16) | (b[off + 2] << 8) | b[off + 3];
@@ -46,6 +59,12 @@ function parseHeader(b: Uint8Array, off: number): Mp3Header | null {
     return { version, layer: 3, sampleRate, channelCount, samplesPerFrame, frameSize: 0 };
 }
 
+/**
+ * Compute MP3 Layer III frame size from header value.
+ * @param h 32-bit header value.
+ * @param hdr Parsed header fields.
+ * @returns Frame byte length or null if unsupported.
+ */
 function frameSizeFromHeader(h: number, hdr: Mp3Header): number | null {
     const bitrateIdx = (h >>> 12) & 0xf;
     const padding = (h >>> 9) & 0x1;
@@ -56,6 +75,12 @@ function frameSizeFromHeader(h: number, hdr: Mp3Header): number | null {
     return Math.floor((coeff * kbps) / hdr.sampleRate) + padding;
 }
 
+/**
+ * Parse an MP3 file buffer into frames and MP4 sample entry builder.
+ * @param buf Node Buffer containing MP3 data.
+ * @returns Parsed track info, frames, and stsd builder.
+ * @throws If no MP3 frames are found.
+ */
 export function parseMp3File(buf: Buffer) {
     const u = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 
@@ -129,6 +154,12 @@ export function parseMp3File(buf: Buffer) {
     };
 }
 
+/**
+ * Build an ISO/IEC 14496-1 ESDS box for MP3 (OTI=0x6B).
+ * @param objectTypeIndication Object Type Indication (e.g. 0x6B for MP3).
+ * @param dsi Decoder Specific Info payload.
+ * @returns 'esds' MP4 box.
+ */
 function buildEsds(objectTypeIndication: number, dsi: Uint8Array) {
     // ES_Descriptor(03) -> DecoderConfig(04) -> DecSpecificInfo(05)
     const tag = (t: number, payload: Uint8Array) => new Uint8Array([t, ...vlen(payload.length), ...payload]);

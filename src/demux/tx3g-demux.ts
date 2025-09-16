@@ -2,14 +2,22 @@
 /* Demux tx3g Timed Text from .3gp/.mp4 into cues and SRT */
 import type { MuxTx3gTrack } from "../iso/subtitle";
 
+/** Single subtitle cue in milliseconds. */
 export type Tx3gCue = { startMs: number; endMs: number; text: string };
+
+/** Minimal tx3g track info (timescale units, byte sizes, and file offsets). */
 export type Tx3gTrack = {
   index: number;
-  language: string;           // mdhd language (3 letters) or 'und'
+  /** mdhd ISO-639-2/T (3 letters) or "und". */
+  language: string;
+  /** mdhd timescale. */
   timescale: number;
-  durations: number[];        // per-sample
-  sizes: number[];            // per-sample (bytes)
-  offsets: number[];          // absolute file offsets into mdat
+  /** Per-sample durations (timescale units). */
+  durations: number[];
+  /** Per-sample sizes (bytes). */
+  sizes: number[];
+  /** Absolute file offsets into mdat. */
+  offsets: number[];
 };
 
 type Box = { type: string; start: number; size: number; header: number; end: number };
@@ -22,6 +30,7 @@ const be64 = (b: DataView, o: number) => {
 };
 const fourcc = (a: ArrayBufferLike, o: number) => new TextDecoder("ascii").decode(new Uint8Array(a, o, 4));
 
+/** Iterate MP4 boxes in [from,to). */
 function* boxes(ab: ArrayBufferLike, from = 0, to = (ab as ArrayBuffer).byteLength): Generator<Box> {
   let off = from;
   const dv = new DataView(ab as ArrayBuffer);
@@ -39,7 +48,7 @@ function* boxes(ab: ArrayBufferLike, from = 0, to = (ab as ArrayBuffer).byteLeng
 const slice = (ab: ArrayBufferLike, start: number, len: number) =>
   new Uint8Array((ab as ArrayBuffer), start, len);
 
-// extract the tx3g SampleEntry bytes from stsd to preserve styling/defaults
+/** Return tx3g SampleEntry bytes from stsd (to preserve styling). */
 function stsdTx3gEntryBytes(ab: ArrayBufferLike, stsd: Box): Uint8Array | undefined {
   // skip version/flags (4) + entry_count (4)
   let off = stsd.start + stsd.header + 8;
@@ -56,6 +65,7 @@ function stsdTx3gEntryBytes(ab: ArrayBufferLike, stsd: Box): Uint8Array | undefi
   return undefined;
 }
 
+/** Find a nested box by path (first match). */
 function find(ab: ArrayBufferLike, parent: Box, path: string[]): Box | undefined {
   if (!path.length) return parent;
   const [head, ...rest] = path;
@@ -65,6 +75,7 @@ function find(ab: ArrayBufferLike, parent: Box, path: string[]): Box | undefined
   return undefined;
 }
 
+/** Collect all direct children of a given type. */
 function findAll(ab: ArrayBufferLike, parent: Box, type: string): Box[] {
   const out: Box[] = [];
   for (const b of boxes(ab, parent.start + parent.header, parent.end)) {
@@ -73,6 +84,7 @@ function findAll(ab: ArrayBufferLike, parent: Box, type: string): Box[] {
   return out;
 }
 
+/** Read mdhd → { timescale, duration, language }. */
 function mdhdInfo(ab: ArrayBufferLike, mdhd: Box) {
   const dv = new DataView(ab as ArrayBuffer);
   const v = new Uint8Array(ab as ArrayBuffer, mdhd.start + mdhd.header, 1)[0];
@@ -88,11 +100,13 @@ function mdhdInfo(ab: ArrayBufferLike, mdhd: Box) {
   return { timescale, duration, language };
 }
 
+/** Get handler subtype (e.g., 'text'). */
 function handlerType(ab: ArrayBufferLike, hdlr: Box) {
   const off = hdlr.start + hdlr.header + 8; // skip pre_defined + component subtype?
   return fourcc(ab, off); // actually component subtype in mp4; for text it's 'text'
 }
 
+/** Expand stts runs to per-sample durations. */
 function readStts(ab: ArrayBufferLike, stts: Box): number[] {
   const dv = new DataView(ab as ArrayBuffer);
   let o = stts.start + stts.header + 4; // skip version/flags
@@ -106,6 +120,7 @@ function readStts(ab: ArrayBufferLike, stts: Box): number[] {
   return durations;
 }
 
+/** Read stsz to per-sample sizes (uses hint length when given). */
 function readStsz(ab: ArrayBufferLike, stsz: Box, sampleCountHint?: number): number[] {
   const dv = new DataView(ab as ArrayBuffer);
   let o = stsz.start + stsz.header + 4; // skip version/flags
@@ -119,6 +134,8 @@ function readStsz(ab: ArrayBufferLike, stsz: Box, sampleCountHint?: number): num
 }
 
 type StscEntry = { first_chunk: number; samples_per_chunk: number; desc_index: number };
+
+/** Parse stsc entries. */
 function readStsc(ab: ArrayBufferLike, stsc: Box): StscEntry[] {
   const dv = new DataView(ab as ArrayBuffer);
   let o = stsc.start + stsc.header + 4;
@@ -131,6 +148,7 @@ function readStsc(ab: ArrayBufferLike, stsc: Box): StscEntry[] {
   return entries;
 }
 
+/** Read chunk offsets from stco/co64. */
 function readChunkOffsets(ab: ArrayBufferLike, stco?: Box, co64?: Box): number[] {
   if (co64) {
     const dv = new DataView(ab as ArrayBuffer);
@@ -149,6 +167,7 @@ function readChunkOffsets(ab: ArrayBufferLike, stco?: Box, co64?: Box): number[]
   return out;
 }
 
+/** Compute per-sample file offsets from sizes/chunks/stsc. */
 function buildSampleOffsets(sizes: number[], chunkOffsets: number[], stscEntries: StscEntry[]): number[] {
   // Map chunk -> samples_per_chunk using stsc run-length
   const samplesPerChunk: number[] = [];
@@ -170,6 +189,7 @@ function buildSampleOffsets(sizes: number[], chunkOffsets: number[], stscEntries
   return offsets;
 }
 
+/** Decode a tx3g sample (u16 length + UTF-8 text). */
 function decodeTx3gSample(ab: ArrayBufferLike, offset: number): string {
   const dv = new DataView(ab as ArrayBuffer);
   const len = be16(dv, offset);
@@ -179,7 +199,11 @@ function decodeTx3gSample(ab: ArrayBufferLike, offset: number): string {
   return txt.replace(/\r\n/g, "\n");
 }
 
-/** Mux-ready extraction: returns complete MuxTx3gTrack(s) with frames/sizes/durations + makeSampleEntry */
+/**
+ * Extract mux-ready tx3g tracks from an MP4: frames/sizes/durations/timescale + SampleEntry.
+ * @param ab ISO-BMFF bytes.
+ * @returns Array of MuxTx3gTrack; SampleEntry preserves default styling when present.
+ */
 export function extractTx3gMuxTracks(ab: ArrayBufferLike): MuxTx3gTrack[] {
   let moov: Box | undefined;
   for (const b of boxes(ab)) if (b.type === "moov") { moov = b; break; }
@@ -237,6 +261,11 @@ export function extractTx3gMuxTracks(ab: ArrayBufferLike): MuxTx3gTrack[] {
   return muxTracks;
 }
 
+/**
+ * Extract all tx3g tracks to timing tables and decoded cues.
+ * @param ab ISO-BMFF bytes.
+ * @returns { tracks, cues } where cues are in milliseconds.
+ */
 export function extractAllTx3gTracks(ab: ArrayBufferLike): { tracks: Tx3gTrack[]; cues: Tx3gCue[][] } {
   // Find moov
   let moov: Box | undefined;
@@ -296,13 +325,17 @@ export function extractAllTx3gTracks(ab: ArrayBufferLike): { tracks: Tx3gTrack[]
   return { tracks: outTracks, cues: outCues };
 }
 
+/**
+ * Convert cues to SRT (with trailing newline).
+ * @param cues Millisecond-based cues.
+ */
 export function cuesToSrt(cues: Tx3gCue[]): string {
   const pad = (n: number, w: number) => String(n).padStart(w, "0");
   const fmt = (ms: number) => {
     const h = Math.floor(ms / 3600000); ms -= h * 3600000;
-    const m = Math.floor(ms / 60000);   ms -= m * 60000;
-    const s = Math.floor(ms / 1000);    const u = ms - s * 1000;
-    return `${pad(h,2)}:${pad(m,2)}:${pad(s,2)},${pad(u,3)}`;
+    const m = Math.floor(ms / 60000); ms -= m * 60000;
+    const s = Math.floor(ms / 1000); const u = ms - s * 1000;
+    return `${pad(h, 2)}:${pad(m, 2)}:${pad(s, 2)},${pad(u, 3)}`;
   };
   let i = 1, out = "";
   for (const c of cues) {

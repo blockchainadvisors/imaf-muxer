@@ -1,7 +1,7 @@
 //src/iso/imaf.ts - IMAF boxes (groups, presets, rules) - see IMAF spec v1.0
 import { u8, u16, u32, i16, box, cstr, full } from './bytes';
 
-// Narrow a numeric byte/word to a literal-union from an allowed set.
+/** Clamp a number to an allowed literal set (for robust parsing). */
 function clampLiteral<T extends readonly number[]>(
   n: number,
   allowed: T,
@@ -10,27 +10,27 @@ function clampLiteral<T extends readonly number[]>(
   return (allowed as readonly number[]).includes(n) ? (n as T[number]) : fallback;
 }
 
-// Specific helpers for your IMAF schema:
+/** Coerce to valid activation mode (0,1,2). */
 function asActivationMode(n: number): 0 | 1 | 2 {
   const v = clampLiteral(n, [0, 1, 2] as const, 0);
   if (v !== n) console.warn(`[imaf] invalid activationMode=${n}; clamped to ${v}`);
   return v;
 }
 
-// If your Preset.presetType is 0 | 1:
+/** Coerce to supported preset type (0). */
 function asPresetType(n: number): 0 {
   if (n !== 0) console.warn(`[imaf] unsupported presetType=${n}; forced to 0`);
   return 0 as 0;
 }
 
-// If your SelectionRule.type is a single literal 0 in your writer:
+/** Coerce selection rule type to supported set (writer uses 0). */
 function asSelectionRuleType(n: number): 0 {
   const v = clampLiteral(n, [0] as const, 0);
   if (v !== n) console.warn(`[imaf] invalid selectionRule.type=${n}; forced to ${v}`);
   return v;
 }
 
-// If your MixingRule.type is a single literal 3 in your writer:
+/** Coerce mixing rule type to supported set (writer uses 3). */
 function asMixingRuleType(n: number): 3 {
   const v = clampLiteral(n, [3] as const, 3);
   if (v !== n) console.warn(`[imaf] invalid mixingRule.type=${n}; forced to ${v}`);
@@ -38,16 +38,30 @@ function asMixingRuleType(n: number): 3 {
 }
 
 // Groups
+
+/** IMAF Group definition (authoring + parsed). */
 export type Group = {
-  groupID: number;               // MSB=1
+  /** Group identifier (MSB=1). */
+  groupID: number;
+  /** Element IDs referenced by this group. */
   elementIDs: number[];
+  /** Activation mode: 0 optional, 1 mandatory, 2 range-limited. */
   activationMode: 0 | 1 | 2;
+  /** Max active elements when activationMode=2. */
   activationCount?: number;
-  referenceVolume: number;       // 8.8 signed
+  /** Reference volume (Q8.8 fixed, expressed as float). */
+  referenceVolume: number;
+  /** Group name (UTF-8, C-string). */
   name: string;
+  /** Group description (UTF-8, C-string). */
   description: string;
 };
 
+/**
+ * Build a single 'grup' box from a Group.
+ * @param g Group descriptor
+ * @param flags FullBox flags (default 0x02)
+ */
 export function grupBox(g: Group, flags = 0x02) {
   const elems = Buffer.alloc(4 * g.elementIDs.length);
   g.elementIDs.forEach((id, i) => elems.writeUInt32BE(id >>> 0, i * 4));
@@ -63,18 +77,32 @@ export function grupBox(g: Group, flags = 0x02) {
   parts.push(cstr(g.name), cstr(g.description));
   return box('grup', ...parts);
 }
+
+/** Build 'grco' box from a list of groups. */
 export const grcoBox = (groups: Group[]) => box('grco', u16(groups.length), ...groups.map(grupBox));
 
 // Presets (type 0 static volumes)
+
+/** IMAF Preset (type 0). */
 export type Preset = {
   presetID: number;
   elementIDs: number[];
+  /** Only type 0 supported. */
   presetType: 0;
+  /** Global volume step index. */
   globalVolumeIndex: number;
+  /** Per-element volume step indices (parallel to elementIDs). */
   perElementVolumeIndex: number[];
+  /** Human-readable name. */
   name: string;
+  /** FullBox flags (optional). */
   flags?: number;
 };
+
+/**
+ * Build a 'prst' box from a Preset.
+ * @throws If perElementVolumeIndex length mismatches elementIDs.
+ */
 export function prstBox(p: Preset) {
   if (p.perElementVolumeIndex.length !== p.elementIDs.length) throw new Error('perElementVolumeIndex length mismatch');
   const elemIDs = Buffer.alloc(4 * p.elementIDs.length);
@@ -91,15 +119,21 @@ export function prstBox(p: Preset) {
     cstr(p.name)
   );
 }
+
+/** Build 'prco' container with presets and default preset ID. */
 export const prcoBox = (presets: Preset[], defaultPresetID: number) =>
   box('prco', u8(presets.length & 0xff), u8(defaultPresetID & 0xff), ...presets.map(prstBox));
 
 // Rules (selection + mixing)
+
+/** Selection rule variants (as authored). */
 export type SelectionRule =
   | { id: number; type: 0; elementID: number; min: number; max: number; desc: string }
   | { id: number; type: 1; elementID: number; keyElementID: number; desc: string }
   | { id: number; type: 2; elementID: number; desc: string }
   | { id: number; type: 3; elementID: number; keyElementID: number; desc: string };
+
+/** Build a 'rusc' (selection rule) box. */
 export function ruscBox(r: SelectionRule) {
   const common = [full(0, 0), u16(r.id & 0xffff), u8(r.type & 0xff), u32(r.elementID >>> 0)];
   if (r.type === 0) return box('rusc', ...common, u16(r.min & 0xffff), u16(r.max & 0xffff), cstr(r.desc));
@@ -107,18 +141,25 @@ export function ruscBox(r: SelectionRule) {
   const key = (r as any).keyElementID >>> 0;
   return box('rusc', ...common, u32(key), cstr(r.desc));
 }
+
+/** Mixing rule variants (as authored). */
 export type MixingRule =
   | { id: number; type: 3; elementID: number; minVol: number; maxVol: number; desc: string }
   | { id: number; type: 0 | 1 | 2; elementID: number; keyElementID: number; desc: string };
+
+/** Build a 'rumx' (mixing rule) box. */
 export function rumxBox(r: MixingRule) {
   const common = [full(0, 0), u16(r.id & 0xffff), u8(r.type & 0xff), u32(r.elementID >>> 0)];
   if (r.type === 3) return box('rumx', ...common, i16(Math.round(r.minVol * 256) | 0), i16(Math.round(r.maxVol * 256) | 0), cstr(r.desc));
   const key = (r as any).keyElementID >>> 0;
   return box('rumx', ...common, u32(key), cstr(r.desc));
 }
+
+/** Build 'ruco' container from selection and mixing rule lists. */
 export const rucoBox = (selection: SelectionRule[], mixing: MixingRule[]) =>
   box('ruco', u16(selection.length & 0xffff), u16(mixing.length & 0xffff), ...selection.map(ruscBox), ...mixing.map(rumxBox));
 
+/** High-level IMAF authoring/parsed spec aggregate. */
 export type ImafSpec = {
   groups?: Group[];
   presets?: Preset[];
@@ -127,20 +168,27 @@ export type ImafSpec = {
   globalPresetSteps?: number;
 };
 // ---------- low-level readers ----------
+
+/** DataView shortcut. */
 const dv = (ab: ArrayBufferLike) => new DataView(ab as ArrayBuffer);
+/** Uint8Array view helper. */
 const u8v = (ab: ArrayBufferLike, o: number, n: number) => new Uint8Array(ab as ArrayBuffer, o, n);
+/** Big-endian u32. */
 const be32 = (b: DataView, o: number) => b.getUint32(o, false);
+/** Big-endian u16. */
 const be16 = (b: DataView, o: number) => b.getUint16(o, false);
+/** Big-endian u64 → JS number (lossy above 2^53). */
 const be64 = (b: DataView, o: number) => {
   const hi = b.getUint32(o, false), lo = b.getUint32(o + 4, false);
   return hi * 2 ** 32 + lo;
 };
-const f32 = (b: DataView, o: number) => b.getFloat32(o, false);
 
-// Minimal ISO walk helpers (duplicate kept tiny to avoid cross-import cycles)
+/** Minimal Box view for ISO-BMFF scanning. */
 type Box = { type: string; start: number; size: number; header: number; end: number };
+/** Read 4CC at offset. */
 const fourcc = (ab: ArrayBufferLike, o: number) => new TextDecoder("ascii").decode(u8v(ab, o, 4));
 
+/** Iterate boxes within range [from,to). */
 function* boxes(ab: ArrayBufferLike, from = 0, to = (ab as ArrayBuffer).byteLength): Generator<Box> {
   const b = dv(ab); let off = from;
   while (off + 8 <= to) {
@@ -153,12 +201,19 @@ function* boxes(ab: ArrayBufferLike, from = 0, to = (ab as ArrayBuffer).byteLeng
     off = end;
   }
 }
+
+/** Children boxes of a parent. */
 const kids = (ab: ArrayBufferLike, parent: Box) =>
   Array.from(boxes(ab, parent.start + parent.header, parent.end));
+/** First child by type. */
 const child = (ab: ArrayBufferLike, parent: Box, typ: string) =>
   kids(ab, parent).find(b => b.type === typ);
 
 // ---------- string helpers for grco/prco authoring symmetry ----------
+/**
+ * Read a NUL-terminated UTF-8 string.
+ * @returns text and next offset after NUL (clamped to limit).
+ */
 function readCString(ab: ArrayBufferLike, start: number, limit: number): { text: string; next: number } {
   const view = new Uint8Array(ab as ArrayBuffer, start, limit);
   let i = 0; while (i < view.length && view[i] !== 0x00) i++;
@@ -166,12 +221,19 @@ function readCString(ab: ArrayBufferLike, start: number, limit: number): { text:
   return { text, next: start + Math.min(i + 1, limit) };
 }
 
+/** List children after skipping some payload bytes inside parent. */
 function childrenAfter(ab: ArrayBufferLike, parent: Box, skipBytes = 0): Box[] {
   const from = parent.start + parent.header + skipBytes;
   return Array.from(boxes(ab, from, parent.end));
 }
 
 // ---------- parse grco ----------
+
+/**
+ * Parse 'grco' into Group[] (matches writer layout).
+ * @param ab ISO file bytes
+ * @param grco Box pointer
+ */
 function parseGrco(ab: ArrayBufferLike, grco: Box): Group[] {
   // Layout as authored by grcoBox in your project:
   // u32 count, then for each:
@@ -188,7 +250,6 @@ function parseGrco(ab: ArrayBufferLike, grco: Box): Group[] {
   // Skip the u16 count field that precedes the first child box.
   let o = grco.start + grco.header;
   const count = be16(b, o);
-  // o += 2;
 
   // Now walk child boxes from 'o' to grco.end
   const grupBoxes = childrenAfter(ab, grco, 2).filter(k => k.type === "grup").slice(0, count);
@@ -224,6 +285,12 @@ function parseGrco(ab: ArrayBufferLike, grco: Box): Group[] {
 }
 
 // ---------- parse prco ----------
+
+/**
+ * Parse 'prco' into steps and Preset[] (matches writer layout).
+ * @param ab ISO file bytes
+ * @param prco Box pointer
+ */
 function parsePrco(ab: ArrayBufferLike, prco: Box): { steps: number; presets: Preset[] } {
   // Layout as authored by prcoBox in your project:
   // u16 steps, u16 count, then for each:
@@ -236,11 +303,11 @@ function parsePrco(ab: ArrayBufferLike, prco: Box): { steps: number; presets: Pr
   //   u16 perElemCount
   //   u16 perElemVolumeIndex[perElemCount]
   //   char name\0
-   let o = prco.start + prco.header;
+  let o = prco.start + prco.header;
 
   // prco header in writer: u8 presetCount, u8 steps
   const presetCount = new Uint8Array(ab as ArrayBuffer, o, 1)[0]; o += 1;
-  const steps       = new Uint8Array(ab as ArrayBuffer, o, 1)[0]; o += 1;
+  const steps = new Uint8Array(ab as ArrayBuffer, o, 1)[0]; o += 1;
 
   // enumerate children AFTER the 2-byte header
   const prstBoxes = childrenAfter(ab, prco, 2)
@@ -256,13 +323,13 @@ function parsePrco(ab: ArrayBufferLike, prco: Box): { steps: number; presets: Pr
     const flags = new DataView(ab as ArrayBuffer, q, 4).getUint32(0, false) & 0x00FFFFFF;
     q += 4;
 
-    const presetID  = new Uint8Array(ab as ArrayBuffer, q, 1)[0]; q += 1; // u8
+    const presetID = new Uint8Array(ab as ArrayBuffer, q, 1)[0]; q += 1; // u8
     const elemCount = new Uint8Array(ab as ArrayBuffer, q, 1)[0]; q += 1; // u8
 
     const elementIDs: number[] = [];
     for (let i = 0; i < elemCount; i++) { elementIDs.push(be32(b, q)); q += 4; }
 
-    const presetType        = asPresetType(new Uint8Array(ab as ArrayBuffer, q, 1)[0]); q += 1; // u8 → 0
+    const presetType = asPresetType(new Uint8Array(ab as ArrayBuffer, q, 1)[0]); q += 1; // u8 → 0
     const globalVolumeIndex = new Uint8Array(ab as ArrayBuffer, q, 1)[0]; q += 1;               // u8
 
     const perElementVolumeIndex: number[] = [];
@@ -276,6 +343,12 @@ function parsePrco(ab: ArrayBufferLike, prco: Box): { steps: number; presets: Pr
 }
 
 // ---------- parse ruco ----------
+
+/**
+ * Parse 'ruco' into selection and mixing rule arrays (matches writer layout).
+ * @param ab ISO file bytes
+ * @param ruco Box pointer
+ */
 function parseRuco(ab: ArrayBufferLike, ruco: Box): { selectionRules: SelectionRule[]; mixingRules: MixingRule[] } {
   // Layout as authored by rucoBox in your project:
   // u16 selCount
@@ -302,7 +375,7 @@ function parseRuco(ab: ArrayBufferLike, ruco: Box): { selectionRules: SelectionR
     // full(0,0)
     q += 4;
 
-    const id   = be16(b, q); q += 2; // u16 in writer
+    const id = be16(b, q); q += 2; // u16 in writer
     const type = asSelectionRuleType(new Uint8Array(ab as ArrayBuffer, q, 1)[0]); q += 1; // u8
     const elementID = be32(b, q); q += 4;
 
@@ -328,7 +401,7 @@ function parseRuco(ab: ArrayBufferLike, ruco: Box): { selectionRules: SelectionR
     // full(0,0)
     q += 4;
 
-    const id   = be16(b, q); q += 2; // u16 in writer
+    const id = be16(b, q); q += 2; // u16 in writer
     const type = asMixingRuleType(new Uint8Array(ab as ArrayBuffer, q, 1)[0]); q += 1; // u8
     const elementID = be32(b, q); q += 4;
 
@@ -350,6 +423,13 @@ function parseRuco(ab: ArrayBufferLike, ruco: Box): { selectionRules: SelectionR
 }
 
 // ---------- public: extractImafSpecFromIso ----------
+
+/**
+ * Extract high-level IMAF spec (groups/presets/rules) from an ISO-BMFF buffer.
+ * Looks under 'moov' for 'grco'/'prco'/'ruco'.
+ * @param ab ISO file bytes
+ * @returns ImafSpec or undefined if none found
+ */
 export function extractImafSpecFromIso(ab: ArrayBufferLike): ImafSpec | undefined {
   // Find moov and look for grco/prco/ruco as its direct children (matches composer)
   let moov: Box | undefined;

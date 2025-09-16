@@ -1,18 +1,35 @@
-//src/lib/wav-pcm.ts - parse WAV PCM files to get raw PCM frames and build MP4 sample entry - Experimental
+//src/codecs/wav-pcm.ts - parse WAV PCM files to get raw PCM frames and build MP4 sample entry - Experimental
 import { box, u16, u32, concat } from '../iso/bytes';
 
+/** WAV 'fmt ' chunk essentials for PCM/IEEE float. */
 type WavFmt = {
-  audioFormat: 1 | 3; // 1=PCM, 3=IEEE float
+  /** 1=PCM (integer), 3=IEEE float. */
+  audioFormat: 1 | 3;
+  /** Channel count (1=mono, 2=stereo, ...). */
   channelCount: number;
+  /** Sampling rate in Hz. */
   sampleRate: number;
+  /** Bits per sample (8/16/24/32). */
   bitsPerSample: number;
+  /** Bytes per second (rate * blockAlign). */
   byteRate: number;
+  /** Block alignment in bytes (channels * bytesPerSample). */
   blockAlign: number;
 };
 
+/** Little-endian U32 reader. */
 function readU32(u: DataView, o: number) { return u.getUint32(o, true); }
+/** Little-endian U16 reader. */
 function readU16(u: DataView, o: number) { return u.getUint16(o, true); }
 
+/**
+ * Parse a WAV file buffer into framed PCM suitable for MP4/IMAF muxing.
+ *
+ * @param buf - Input WAV file as Node.js Buffer
+ * @param frameSamples - Number of PCM samples per output frame (default: 1024)
+ * @returns Parsed PCM track info with frames, sizes, and a makeSampleEntry function
+ * @throws If the WAV file is invalid or missing required chunks
+ */
 export function parseWavFile(buf: Buffer, frameSamples = 1024) {
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
 
@@ -71,6 +88,12 @@ export function parseWavFile(buf: Buffer, frameSamples = 1024) {
   };
 }
 
+/**
+ * Build a minimal 'lpcm' sample entry for MP4/QuickTime containers.
+ *
+ * @param fmt - WAV format info
+ * @returns A 'lpcm' box Buffer
+ */
 function buildLpcmEntry(fmt: WavFmt) {
   // QuickTime-style 'lpcm' sample entry:
   // version fields + channelCount/bits/sampleRate, + 'lpcm' specific fields in the extension

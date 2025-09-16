@@ -4,12 +4,14 @@ import { decodeXmlBytes } from "../iso/mpeg7";
 
 let DEBUG = new Set<string>();
 const dbg = (ns: string, ...a: any[]) => { if (DEBUG.has("*") || DEBUG.has(ns)) console.log(`[${ns}]`, ...a); };
+/** Enable selective debug namespaces (e.g., ["*", "tree", "xml"]). */
 export function configureDemuxDebug(tokens?: string[] | Set<string>) {
   DEBUG = new Set([...(tokens ?? [])].map(s => String(s).trim()).filter(Boolean));
 }
 const fmtN = (n: number) => n.toLocaleString();
 
 // ---- Core types & low-level readers ----
+/** @internal */
 type Box = { type: string; start: number; size: number; header: number; end: number };
 const dv = (ab: ArrayBufferLike) => new DataView(ab as ArrayBuffer);
 const u8v = (ab: ArrayBufferLike, o: number, n: number) => new Uint8Array(ab as ArrayBuffer, o, n);
@@ -18,6 +20,7 @@ const be16 = (b: DataView, o: number) => b.getUint16(o, false);
 const be64 = (b: DataView, o: number) => { const hi = b.getUint32(o, false), lo = b.getUint32(o + 4, false); return hi * 2 ** 32 + lo; };
 const fourcc = (ab: ArrayBufferLike, o: number) => new TextDecoder("ascii").decode(u8v(ab, o, 4));
 
+/** Iterate boxes between [from,to). */
 function* boxes(ab: ArrayBufferLike, from = 0, to = (ab as ArrayBuffer).byteLength): Generator<Box> {
   const b = dv(ab); let off = from;
   while (off + 8 <= to) {
@@ -31,17 +34,21 @@ function* boxes(ab: ArrayBufferLike, from = 0, to = (ab as ArrayBuffer).byteLeng
   }
 }
 
+/** Child payload start (handles FullBox 'meta'). */
 function payloadStartForChildren(b: Box): number {
   // 'meta' is FullBox: children start after version/flags (4)
   return b.type === "meta" ? (b.start + b.header + 4) : (b.start + b.header);
 }
+/** List direct children of a parent box. */
 function kids(ab: ArrayBufferLike, parent: Box): Box[] {
   return Array.from(boxes(ab, payloadStartForChildren(parent), parent.end));
 }
+/** First child of given type. */
 function child(ab: ArrayBufferLike, parent: Box, typ: string): Box | undefined {
   for (const b of boxes(ab, payloadStartForChildren(parent), parent.end)) if (b.type === typ) return b;
   return undefined;
 }
+/** Depth-first search for a box type within [from,to). */
 function findBoxDeep(ab: ArrayBufferLike, from: number, to: number, fourCC: string): { off: number, size: number } | undefined {
   const B = dv(ab); let p = from;
   while (p + 8 <= to) {
@@ -57,17 +64,21 @@ function findBoxDeep(ab: ArrayBufferLike, from: number, to: number, fourCC: stri
 }
 
 // ---- Sample tables & media info ----
+/** Read 'stts' to per-sample durations. */
 function readStts(ab: ArrayBufferLike, stts: Box): number[] {
   const b = dv(ab); let o = stts.start + stts.header + 4; const n = be32(b, o); o += 4;
   const d: number[] = []; for (let i = 0; i < n; i++) { const c = be32(b, o); o += 4; const dt = be32(b, o); o += 4; for (let k = 0; k < c; k++) d.push(dt); }
   return d;
 }
+/** 'stsc' entries. */
 type StscEntry = { first_chunk: number; samples_per_chunk: number; desc_index: number };
+/** Read 'stsc' table. */
 function readStsc(ab: ArrayBufferLike, stsc: Box): StscEntry[] {
   const b = dv(ab); let o = stsc.start + stsc.header + 4; const n = be32(b, o); o += 4;
   const e: StscEntry[] = []; for (let i = 0; i < n; i++) { e.push({ first_chunk: be32(b, o), samples_per_chunk: be32(b, o + 4), desc_index: be32(b, o + 8) }); o += 12; }
   return e;
 }
+/** Read 'stsz' to explicit sample sizes (uses hint length if provided). */
 function readStsz(ab: ArrayBufferLike, stsz: Box, hint?: number): number[] {
   const b = dv(ab); let o = stsz.start + stsz.header + 4;
   const defaultSize = be32(b, o); o += 4; const n = be32(b, o); o += 4; const m = hint ?? n;
@@ -75,6 +86,7 @@ function readStsz(ab: ArrayBufferLike, stsz: Box, hint?: number): number[] {
   const out = new Array<number>(m); for (let i = 0; i < m; i++) { out[i] = be32(b, o); o += 4; }
   return out;
 }
+/** Read chunk offsets from 'stco' or 'co64'. */
 function readChunkOffsets(ab: ArrayBufferLike, stco?: Box, co64?: Box): number[] {
   if (co64) {
     const b = dv(ab); let o = co64.start + co64.header + 4; const n = be32(b, o); o += 4; const a = new Array<number>(n);
@@ -83,11 +95,13 @@ function readChunkOffsets(ab: ArrayBufferLike, stco?: Box, co64?: Box): number[]
   if (!stco) return []; const b = dv(ab); let o = stco.start + stco.header + 4; const n = be32(b, o); o += 4; const a = new Array<number>(n);
   for (let i = 0; i < n; i++) { a[i] = be32(b, o); o += 4; } return a;
 }
+/** Compute per-sample file offsets from sizes/chunks/stsc. */
 function buildSampleOffsets(sizes: number[], chunkOffsets: number[], stscEntries: StscEntry[]): number[] {
   const spc: number[] = []; for (let c = 1, i = 0; c <= chunkOffsets.length; c++) { while (i + 1 < stscEntries.length && stscEntries[i + 1].first_chunk <= c) i++; spc[c - 1] = stscEntries[i]?.samples_per_chunk ?? 1; }
   const offs: number[] = []; let s = 0; for (let c = 0; c < chunkOffsets.length; c++) { let off = chunkOffsets[c], n = spc[c] ?? 1; for (let j = 0; j < n && s < sizes.length; j++, s++) { offs.push(off); off += sizes[s]; } }
   return offs;
 }
+/** Extract mdhd timescale/duration/lang. */
 function mdhdInfo(ab: ArrayBufferLike, mdhd: Box) {
   const b = dv(ab); const ver = u8v(ab, mdhd.start + mdhd.header, 1)[0];
   let o = mdhd.start + mdhd.header + 4; if (ver === 1) o += 16; else o += 8;
@@ -97,10 +111,15 @@ function mdhdInfo(ab: ArrayBufferLike, mdhd: Box) {
   const c1 = ((lang >> 10) & 31) + 0x60, c2 = ((lang >> 5) & 31) + 0x60, c3 = (lang & 31) + 0x60;
   return { timescale, duration, language: String.fromCharCode(c1, c2, c3) };
 }
+/** Read handler type from 'hdlr'. */
 function handlerType(ab: ArrayBufferLike, hdlr: Box) { return fourcc(ab, hdlr.start + hdlr.header + 8); }
 
 // ---- stsd entry (audio + tx3g) ----
+
+/** Minimal parsed SampleEntry view (with optional esds/meta). */
 type SampleEntry = { type: string; bytes: Uint8Array; esds?: Uint8Array; channelcount?: number; samplesize?: number; samplerate?: number };
+
+/** Parse first stsd entry; extract channelcount/samplerate/esds if present. */
 function readStsdEntry(ab: ArrayBufferLike, stsd: Box): SampleEntry | undefined {
   const b = dv(ab); let off = stsd.start + stsd.header + 8; if (off + 8 > stsd.end) return;
   let size = be32(b, off), type = fourcc(ab, off + 4), hdr = 8;
@@ -133,6 +152,8 @@ function readStsdEntry(ab: ArrayBufferLike, stsd: Box): SampleEntry | undefined 
 }
 
 // ---- esds → ASC + OT ----
+
+/** Parse 'esds' to extract DecoderConfig OT and DecSpecificInfo (ASC). */
 function parseEsdsAsc(esds?: Uint8Array): { asc?: Uint8Array; ot?: number } {
   if (!esds) return {};
   let o = 12; let ot: number | undefined;
@@ -147,16 +168,29 @@ function parseEsdsAsc(esds?: Uint8Array): { asc?: Uint8Array; ot?: number } {
 }
 
 // ---- MPEG-7 meta collection + pretty XML ----
-export type Mpeg7MetaSummary = {
-  album?: { meta: Box; xml?: Uint8Array };
-  song?: { meta: Box; xml?: Uint8Array };
-  tracks: Array<{ index: number; meta: Box; xml?: Uint8Array }>;
+
+/** Public alias for ISO-BMFF box header info returned by helpers. */
+export type MpegBox = {
+  type: string;
+  start: number;
+  size: number;
+  header: number;
+  end: number;
 };
+
+/** Summary of MPEG-7 'meta' boxes found. */
+export type Mpeg7MetaSummary = {
+  album?: { meta: MpegBox; xml?: Uint8Array };
+  song?: { meta: MpegBox; xml?: Uint8Array };
+  tracks: Array<{ index: number; meta: MpegBox; xml?: Uint8Array }>;
+};
+/** Return XML payload from a 'meta' box, if any. */
 function xmlBytesFromMeta(ab: ArrayBufferLike, meta: Box): Uint8Array | undefined {
   const x = child(ab, meta, "xml "); if (!x) return;
   const sz = x.end - (x.start + x.header); if (sz <= 0) return;
   return u8v(ab, x.start + x.header, sz);
 }
+/** Read handler FourCC and UTF-8 name from a 'meta'. */
 function readMetaHandler(ab: ArrayBufferLike, meta: Box): { handler?: string; name?: string } {
   const h = child(ab, meta, "hdlr"); if (!h) return {};
   const handler = fourcc(ab, h.start + h.header + 8);
@@ -170,6 +204,7 @@ function readMetaHandler(ab: ArrayBufferLike, meta: Box): { handler?: string; na
   } catch { }
   return { handler, name };
 }
+/** Build a concise label for a 'meta' (handler/name/xml length). */
 function metaLabel(ab: ArrayBufferLike, meta: Box): string {
   const { handler, name } = readMetaHandler(ab, meta);
   const xb = xmlBytesFromMeta(ab, meta);
@@ -179,6 +214,8 @@ function metaLabel(ab: ArrayBufferLike, meta: Box): string {
   if (xb?.length) parts.push(`xml=${xb.length}B`);
   return parts.length ? ` [${parts.join(", ")}]` : "";
 }
+
+/** Collect top-level album meta, song meta, and per-audio-track metas. */
 export function collectMpeg7Metas(ab: ArrayBufferLike): Mpeg7MetaSummary {
   const A = ab as ArrayBuffer;
   const out: Mpeg7MetaSummary = { tracks: [] };
@@ -216,16 +253,7 @@ export function collectMpeg7Metas(ab: ArrayBufferLike): Mpeg7MetaSummary {
   return out;
 }
 
-
-// export function decodeXmlBytes(xb: Uint8Array): string {
-//   if (xb.length >= 2 && xb[0] === 0xFF && xb[1] === 0xFE) return new TextDecoder("utf-16le").decode(xb);
-//   if (xb.length >= 2 && xb[0] === 0xFE && xb[1] === 0xFF) return new TextDecoder("utf-16be").decode(xb);
-//   if (xb.length >= 3 && xb[0] === 0xEF && xb[1] === 0xBB && xb[2] === 0xBF) return new TextDecoder("utf-8").decode(xb);
-//   if (xb.length >= 2 && xb[0] === 0x00) return new TextDecoder("utf-16be").decode(xb);
-//   if (xb.length >= 2 && xb[1] === 0x00) return new TextDecoder("utf-16le").decode(xb);
-//   return new TextDecoder("utf-8", { fatal: false }).decode(xb);
-// }
-
+/** Pretty-print XML with width/line limits (debug view). */
 function prettyXml(xml: string, opts?: { maxLines?: number; maxWidth?: number }): string {
   const maxLines = opts?.maxLines ?? 40; const maxWidth = opts?.maxWidth ?? 120;
   let s = xml.trim().replace(/>\s+</g, "><");
@@ -252,6 +280,8 @@ function prettyXml(xml: string, opts?: { maxLines?: number; maxWidth?: number })
 }
 
 // ---- Tree view (concise) ----
+
+/** One-line-per-box summary of the file structure (moov details included). */
 export function dumpBoxTreeConcise(ab: ArrayBufferLike): string {
   const A = ab as ArrayBuffer, lines: string[] = [];
   for (const b of boxes(A)) {
@@ -299,14 +329,22 @@ export function dumpBoxTreeConcise(ab: ArrayBufferLike): string {
 }
 
 // ---- Public structs & reader ----
+
+/** Extracted audio payload summary. */
 export type AudioDump = {
   kind: "aac" | "mp3" | "lpcm" | "raw";
   sampleRate?: number; channels?: number; bits?: number;
   frames: Uint8Array[]; sizes: number[];
   asc?: Uint8Array; aot?: number; ot?: number; first2?: number;
 };
+/** Extracted tx3g payload summary. */
 export type Tx3gDump = { sampleEntry: Uint8Array; sizes: number[]; durations: number[]; timescale: number; language: string; frames: Uint8Array[] };
 
+/**
+ * Demux an IMA/MP4 buffer into audio and tx3g samples plus basic metadata.
+ * @param ab ISO-BMFF bytes
+ * @param opts { debug }
+ */
 export function readIma(ab: ArrayBufferLike, opts?: { debug?: string[] | Set<string> }) {
   if (opts?.debug) configureDemuxDebug(opts.debug);
   dbg("ima", "Start readIma; bytes:", (ab as ArrayBuffer).byteLength);
@@ -389,7 +427,10 @@ export function readIma(ab: ArrayBufferLike, opts?: { debug?: string[] | Set<str
 }
 
 // ---- Audio & tx3g builders (return Buffers) ----
+
+/** ADTS sampling-rate indices. */
 const SR_INDEX: Record<number, number> = { 96000: 0, 88200: 1, 64000: 2, 48000: 3, 44100: 4, 32000: 5, 24000: 6, 22050: 7, 16000: 8, 12000: 9, 11025: 10, 8000: 11, 7350: 12 };
+/** Build a 7-byte ADTS header for an AAC frame len. */
 function adtsHeader(aot: number, sr: number, ch: number, frameLen: number) {
   const prof = (aot - 1) & 0x3; const srx = SR_INDEX[sr] ?? 4; const len = frameLen + 7;
   const h = new Uint8Array(7);
@@ -397,6 +438,8 @@ function adtsHeader(aot: number, sr: number, ch: number, frameLen: number) {
   h[3] = ((ch & 3) << 6) | ((len >> 11) & 0x03); h[4] = (len >> 3) & 0xFF; h[5] = ((len & 7) << 5) | 0x1F; h[6] = 0xFC;
   return h;
 }
+
+/** Wrap raw AAC frames with ADTS headers (no-op if already ADTS). */
 export function buildAdtsStream(frames: Uint8Array[], opts: { sr: number; ch: number; aot?: number; first2?: number }) {
   const looksADTS = opts.first2 !== undefined && ((opts.first2 & 0xFFF6) === 0xFFF0);
   if (looksADTS) return Buffer.concat(frames.map(f => Buffer.from(f)));
@@ -404,9 +447,13 @@ export function buildAdtsStream(frames: Uint8Array[], opts: { sr: number; ch: nu
   for (const f of frames) { out.push(Buffer.from(adtsHeader(aot, opts.sr, opts.ch, f.byteLength))); out.push(Buffer.from(f)); }
   return Buffer.concat(out);
 }
+
+/** Concatenate MP3 frames. */
 export function buildMp3Stream(frames: Uint8Array[]) {
   return Buffer.concat(frames.map(f => Buffer.from(f)));
 }
+
+/** Build a minimal PCM WAV file from raw PCM. */
 export function buildWavFile(pcm: Uint8Array, sr: number, ch: number, bits: number) {
   const byteRate = sr * ch * (bits / 8); const blockAlign = ch * (bits / 8);
   const hdr = Buffer.alloc(44);
@@ -424,6 +471,13 @@ function u16(n: number) { const b = Buffer.alloc(2); b.writeUInt16BE(n >>> 0, 0)
 function str4(s: string) { return Buffer.from(s, "ascii"); }
 function box(type: string, ...payload: Buffer[]): Buffer { const body = Buffer.concat(payload); return Buffer.concat([u32(8 + body.length), str4(type), body]); }
 
+/**
+ * Build a tiny 3GP file containing a single tx3g track.
+ * @param sampleEntry tx3g SampleEntry.
+ * @param frames Encoded samples.
+ * @param durations Per-sample durations (timescale units).
+ * @param timescale mdhd timescale.
+ */
 export function buildTx3g3gpFile(sampleEntry: Uint8Array, frames: Uint8Array[], durations: number[], timescale: number) {
   const sizes = frames.map(f => f.byteLength);
   const mdatPayload = Buffer.concat(frames.map(f => Buffer.from(f)));

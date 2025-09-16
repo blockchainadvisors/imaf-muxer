@@ -1,6 +1,9 @@
 // src/codecs/srt.ts
 import { SubtitleCue } from "../iso/subtitle";
 
+/**
+ * Convert "HH:MM:SS,mmm" into milliseconds.
+ */
 const timeToMs = (t: string) => {
   // "HH:MM:SS,mmm"
   const m = t.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
@@ -8,6 +11,13 @@ const timeToMs = (t: string) => {
   return (+m[1])*3600000 + (+m[2])*60000 + (+m[3])*1000 + (+m[4]);
 };
 
+/**
+ * Parse SRT subtitle text into a list of cues.
+ * Skips malformed blocks.
+ *
+ * @param s - SRT file content
+ * @returns Array of SubtitleCue objects
+ */
 export function parseSrt(s: string): SubtitleCue[] {
   const blocks = s.replace(/\r/g,"").trim().split(/\n\n+/);
   const cues: SubtitleCue[] = [];

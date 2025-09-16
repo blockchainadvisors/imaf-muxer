@@ -1,10 +1,18 @@
-// scripts/3gp-tx3g-to-srt.ts
+//scripts/3gp-tx3g-to-srt.ts
+/** CLI: extract tx3g subtitles from 3GP/MP4 and write SRT files. */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { extractAllTx3gTracks, cuesToSrt } from "../dist/imaf-mux.min.js";
 
 // tiny arg parser
+/** Parsed CLI flags; "_" holds positionals. */
 type ArgMap = Record<string, string | boolean | string[]>;
+
+/**
+ * Parse argv into flags and positionals.
+ * @param argv Process args sans node/script.
+ * @returns Arg map with strings/booleans/arrays as given.
+ */
 function parseArgs(argv: string[]): ArgMap {
   const out: ArgMap = {};
   const push = (k: string, v: string | boolean = true) => {
@@ -38,6 +46,7 @@ function parseArgs(argv: string[]): ArgMap {
   return out;
 }
 
+/** Print usage help and exit(0). */
 function showHelpAndExit() {
   console.log(
 `Usage:
@@ -54,6 +63,7 @@ Options:
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) showHelpAndExit();
 
+/** Resolve input path from --in/-i or first positional. */
 const inPath = (args.in as string) || (args.i as string) || (Array.isArray(args._) ? args._[0] : undefined);
 if (!inPath) {
   console.error("error: --in <input.3gp|.mp4> is required\n(use --help for usage)");
@@ -68,6 +78,7 @@ if (!tracks.length) {
   process.exit(2);
 }
 
+/** Output base name (defaults to input basename). */
 const base =
   (args["out-base"] as string) ||
   (args.o as string) ||

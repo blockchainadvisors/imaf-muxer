@@ -1,4 +1,5 @@
-// scripts/mux-imaf.ts
+//scripts/mux-imaf.ts
+/** CLI: mux audio (+ optional subtitles) into an IMA(.mp4) with optional IMAF & MPEG-7. */
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -9,7 +10,14 @@ import {
 } from "../dist/imaf-mux.min.js";
 
 // --- tiny arg parser ---
+/** Map of parsed CLI flags. */
 type ArgMap = Record<string, string | boolean | string[]>;
+
+/**
+ * Parse argv into flags and positionals.
+ * @param argv e.g., process.argv.slice(2)
+ * @returns ArgMap with "_" holding positionals.
+ */
 function parseArgs(argv: string[]): ArgMap {
   const out: ArgMap = {};
   const push = (k: string, v: string | boolean = true) => {
@@ -43,6 +51,7 @@ function parseArgs(argv: string[]): ArgMap {
   return out;
 }
 
+/** Print usage and exit(0). */
 function showHelpAndExit() {
   console.log(
     `Usage:
@@ -68,6 +77,7 @@ Options:
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) showHelpAndExit();
 
+/** Output file path. */
 const outPath = (args.out as string) || (args.o as string);
 if (!outPath) {
   console.error("error: --out <out.ima> is required\n(use --help for usage)");
@@ -82,12 +92,14 @@ const inputPaths = [...argIn, ...positionals];
 const subtitlePaths = toArr(args.subtitle);
 
 // FS-only: read files (binary → Buffer)
+/** Read a file if it exists; otherwise undefined. */
 const readIfFile = (p: string): Buffer | undefined => {
   try { if (fs.existsSync(p) && fs.statSync(p).isFile()) return fs.readFileSync(p); }
   catch { /* ignore */ }
   return undefined;
 };
 
+/** Map paths to InputFile objects (skips non-files). */
 const makeInputs = (paths: string[]): InputFile[] =>
   paths.map(name => ({ name, buf: readIfFile(name)! }))
     .filter(x => x.buf instanceof Buffer);
@@ -101,6 +113,7 @@ const inputFiles: InputFile[] = makeInputs(inputPaths);
 const subtitleFiles: InputFile[] = makeInputs(subtitlePaths);
 
 // FS-only: load argument payloads as plain strings (scripts don’t parse)
+/** Return inline string or file contents for a string arg. */
 const readArgPayload = (v: unknown): string | undefined => {
   if (typeof v !== "string") return undefined;
   if (/^\s*\{/.test(v)) return v;                 // inline JSON

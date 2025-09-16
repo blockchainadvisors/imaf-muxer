@@ -10,12 +10,14 @@ import { AlbumMeta, SongMeta, TrackMeta, mpeg7AlbumXML, mpeg7SongXML, mpeg7Track
 import type { MuxTx3gTrack } from "../iso/subtitle";
 import { mdia_for_tx3g } from "../iso/subtitle";
 
+/** Composer options for layout, metadata, IMAF, and subtitle tracks. */
 export type ComposeOptions = {
-    // File layout
+    /** File layout order. */
     layout?: "ftyp-mdat-moov" | "ftyp-moov-mdat";
+    /** Movie timescale (Hz). */
     movieTimescale?: number;
 
-    // MPEG-7 (pass your own XML strings if you like)
+    /** Optional MPEG-7 XML overrides. */
     albumXml?: string;
     songXml?: string;
     perTrackXml?: string[];
@@ -29,13 +31,16 @@ export type ComposeOptions = {
      */
     includeImaf?: boolean | string | ImafSpec;
 
+    /** Optional tx3g subtitle tracks. */
     subtitleTracks?: MuxTx3gTrack[];
 
+    /** Structured metadata used if XML not provided. */
     albumMeta?: AlbumMeta;
     songMeta?: SongMeta;
     perTrackMeta?: TrackMeta[];
 };
 
+/** Parse includeImaf value into ImafSpec (string/object) or undefined. */
 function parseImafSpec(val: unknown): ImafSpec | undefined {
     if (!val) return undefined;
     if (typeof val === "string") {
@@ -45,6 +50,12 @@ function parseImafSpec(val: unknown): ImafSpec | undefined {
     return undefined;
 }
 
+/**
+ * Compose an ISOBMFF file with audio tracks, optional tx3g subtitles, MPEG-7 meta, and IMAF boxes.
+ * @param tracks Audio tracks.
+ * @param opts ComposeOptions.
+ * @returns Complete MP4/ISOBMFF buffer.
+ */
 export function composeImaf(tracks: MuxTrack[], opts: ComposeOptions = {}): Buffer {
     const {
         layout = "ftyp-mdat-moov",

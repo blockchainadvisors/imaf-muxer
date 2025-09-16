@@ -1,11 +1,20 @@
-//src/lib/saoc.ts - parse SAOC elementary stream with sidecar ASC, build MP4 sample entry - Experimental
+//src/codecs/saoc.ts - parse SAOC elementary stream with sidecar ASC, build MP4 sample entry - Experimental
 import { box, u16, u32, concat } from '../iso/bytes';
 import * as fs from 'node:fs';
 
-type SaocOptions = {
+/** Options for SAOC parsing with external AudioSpecificConfig. */
+export type SaocOptions = {
+    /** Path to .asc text (hex or base64). */
     ascPath: string;               // sidecar AudioSpecificConfig (.asc) as hex or base64
+    /** Samples per frame; defaults to 1024. */
     samplesPerFrame?: number;      // default 1024
 };
+/**
+ * Build an ISO/IEC 14496-1 ESDS box.
+ * @param objectTypeIndication OTI (e.g., 0x40 for AAC/SAOC).
+ * @param dsi DecoderSpecificInfo payload (ASC bytes).
+ * @returns 'esds' MP4 box.
+ */
 function buildEsds(objectTypeIndication: number, dsi: Uint8Array) {
     // ES_Descriptor(03) -> DecoderConfig(04) -> DecSpecificInfo(05)
     const tag = (t: number, payload: Uint8Array) => new Uint8Array([t, ...vlen(payload.length), ...payload]);
@@ -31,7 +40,14 @@ function buildEsds(objectTypeIndication: number, dsi: Uint8Array) {
     );
     return box('esds', esdsPayload);
 }
-// Expect input payload file to already contain one access unit per frame (like ADTS payloads w/o headers)
+
+/**
+ * Parse SAOC elementary stream with sidecar ASC and provide MP4 sample entry.
+ * Assumes 4-byte big-endian AU length prefixes.
+ * @param raw Raw input buffer (length-prefixed AUs).
+ * @param opts { ascPath, samplesPerFrame? }
+ * @returns Track info, frames/sizes, and sample entry builder.
+ */
 export function parseSaocElementaryStream(raw: Buffer, opts: SaocOptions) {
     const u = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
 
@@ -82,6 +98,11 @@ export function parseSaocElementaryStream(raw: Buffer, opts: SaocOptions) {
     };
 }
 
+/**
+ * Read sidecar ASC text file as bytes (hex or base64).
+ * @param path Path to .asc file.
+ * @returns ASC as Uint8Array.
+ */
 function readAsc(path: string): Uint8Array {
     const txt = fs.readFileSync(path, 'utf8').trim();
     const isHex = /^[0-9a-fA-F]+$/.test(txt.replace(/\s+/g, ''));
@@ -95,8 +116,12 @@ function readAsc(path: string): Uint8Array {
     return new Uint8Array(Buffer.from(txt, 'base64'));
 }
 
-// Minimal inference; for precise parsing we’d parse GAConfig/SAOCConfig bits.
-// For now let the caller override via opts if needed.
+/**
+ * Minimal inference from ASC; caller may override via opts.
+ * @param asc Raw ASC bytes.
+ * @param defaultSpf Fallback samples per frame.
+ * @returns { sampleRate, channelCount, samplesPerFrame }
+ */
 function inferFromAsc(asc: Uint8Array, defaultSpf: number) {
     // Most SAOC configs are based on AAC core with 1024 samples.
     // If you want, I can add a proper ASC parser to extract samplingFrequencyIndex and channelConfig.

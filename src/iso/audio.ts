@@ -1,27 +1,42 @@
-// src/lib/audio.ts
+// src/iso/audio.ts
 import { u8, u16, u24, u32, i16, str, cstr, pad, concat, box, fixed16_16, full, vlen } from './bytes';
 
 // ---- Generic track shape for the muxer ----
 // Works with:
 //  - New codecs (MP3/PCM/SAOC): provide makeSampleEntry(), frameCount, samplesPerFrame.
 //  - Legacy AAC: provide asc + channelConfig (+ frameCount). samplesPerFrame defaults to 1024.
+
+/** Codec-agnostic audio track for muxing. */
 export type MuxTrack = {
   sampleRate: number;
-  mdhdDuration: number;           // in mdhd timescale units (usually = sampleRate)
-  sizes: number[];                // sample sizes (bytes)
-  frameCount: number;             // number of samples/frames in the track
-  samplesPerFrame?: number;       // e.g. AAC=1024, MP3=1152, PCM configurable; default 1024
+  /** mdhd duration in timescale units (usually = sampleRate). */
+  mdhdDuration: number;
+  /** Per-sample byte sizes. */
+  sizes: number[];
+  /** Number of samples/frames. */
+  frameCount: number;
+  /** Samples per frame (AAC=1024, MP3=1152, etc.). */
+  samplesPerFrame?: number;
+  /** Encoded samples. */
   frames: Uint8Array[];
-  // Preferred (codec-agnostic) path:
+  /** Preferred: builder for stsd entry. */
   makeSampleEntry?: () => Uint8Array | Buffer;
 
   // Legacy AAC fallback:
-  asc?: Uint8Array | Buffer;      // AudioSpecificConfig
-  channelConfig?: number;         // AAC channel configuration (1..7 typically)
+  /** AudioSpecificConfig. */
+  asc?: Uint8Array | Buffer;
+  /** AAC channel configuration. */
+  channelConfig?: number;
 };
 
 // ---------------- ESDS + sample entry builders ----------------
 
+/**
+ * Build 'esds' box for AAC.
+ * @param asc AudioSpecificConfig.
+ * @param avgBitrate Average bitrate (bps).
+ * @param maxBitrate Max bitrate (bps).
+ */
 export function esdsBox(asc: Uint8Array | Buffer, avgBitrate = 0, maxBitrate = 0) {
   const ascBuf = Buffer.isBuffer(asc) ? asc : Buffer.from(asc);
   const esDescrHeader = concat(u8(0x03), vlen(3 + 5 + (2 + ascBuf.length) + 3), u16(1), u8(0x00));
@@ -34,6 +49,12 @@ export function esdsBox(asc: Uint8Array | Buffer, avgBitrate = 0, maxBitrate = 0
   return box('esds', u32(0), descriptors);
 }
 
+/**
+ * Build 'mp4a' sample entry.
+ * @param sampleRate Hz.
+ * @param channels Channel count.
+ * @param asc AudioSpecificConfig.
+ */
 export function mp4aSampleEntry(sampleRate: number, channels: number, asc: Uint8Array | Buffer) {
   const ascBuf = Buffer.isBuffer(asc) ? asc : Buffer.from(asc);
   const se = concat(
@@ -47,54 +68,72 @@ export function mp4aSampleEntry(sampleRate: number, channels: number, asc: Uint8
 }
 
 // ---------------- stbl helpers (now codec-agnostic) ----------------
-
+/** Single-entry 'stsd'. */
 export const stsd = (entry: Uint8Array | Buffer) => box('stsd', u32(0), u32(1), Buffer.isBuffer(entry) ? entry : Buffer.from(entry));
 
-// stts now takes (frameCount, samplesPerFrame)
+/** 'stts' with one run: frameCount × samplesPerFrame. */
 export const stts = (frameCount: number, samplesPerFrame: number) =>
   box('stts', u32(0), u32(1), u32(frameCount), u32(samplesPerFrame >>> 0));
 
+/** Trivial 'stsc' (1:1). */
 export const stsc = () =>
   box('stsc', u32(0), u32(1), u32(1), u32(1), u32(1));
 
+/** Build 'stsz' from sizes. */
 export const stsz = (sizes: number[]) => {
   const arr = Buffer.alloc(4 * sizes.length);
   sizes.forEach((s, i) => arr.writeUInt32BE(s >>> 0, i * 4));
   return box('stsz', u32(0), u32(0), u32(sizes.length), arr);
 };
 
+/** Build 'stco' from chunk offsets. */
 export const stco = (offsets: number[]) => {
   const arr = Buffer.alloc(4 * offsets.length);
   offsets.forEach((o, i) => arr.writeUInt32BE(o >>> 0, i * 4));
   return box('stco', u32(0), u32(offsets.length), arr);
 };
 
+/** 'smhd' sound media header. */
 export const smhd = () => box('smhd', u32(0), u16(0), u16(0));
 
+/** Minimal self-referencing data reference. */
 export const dinf_minimal_url_self = () => {
   const url = box('url ', u32(1));
   const dref = box('dref', u32(0), u32(1), url);
   return box('dinf', dref);
 };
 
+/** 'hdlr' for audio ('soun'). */
 export const hdlr_soun = () => {
   const name = Buffer.from('SoundHandler\0', 'ascii');
   return box('hdlr', u32(0), u32(0), str('soun'), u32(0), u32(0), u32(0), name);
 };
 
 // ---------------- timing headers ----------------
-// 36-byte unity matrix (9 * u32)
+/** 3×3 unity matrix (Q16.16). */
 const MATRIX_UNITY = Buffer.concat([
   u32(0x00010000), u32(0x00000000), u32(0x00000000), // a, b, u
   u32(0x00000000), u32(0x00010000), u32(0x00000000), // c, d, v
   u32(0x00000000), u32(0x00000000), u32(0x40000000), // x, y, w
 ]);
 
+/**
+ * Build 'mdhd' (v0) for audio.
+ * @param sampleRate Timescale.
+ * @param durationSamples Duration in samples.
+ */
 export function mdhd(sampleRate: number, durationSamples: number) {
   const lang = ((('u'.charCodeAt(0) - 96) << 10) | (('n'.charCodeAt(0) - 96) << 5) | ('d'.charCodeAt(0) - 96)) & 0x7fff;
   return box('mdhd', u32(0), u32(0), u32(0), u32(sampleRate), u32(durationSamples), u16(lang), u16(0));
 }
 
+/**
+ * Build 'tkhd' for an audio track.
+ * @param trackId Track ID.
+ * @param movieTimescale Movie timescale.
+ * @param trackDurationSamples Track duration in samples.
+ * @param sampleRate Track timescale (Hz).
+ */
 export function tkhd(trackId: number, movieTimescale: number, trackDurationSamples: number, sampleRate: number) {
   const durationMv = Math.round(trackDurationSamples / sampleRate * movieTimescale);
   const flags = 0x0007;
@@ -111,6 +150,11 @@ export function tkhd(trackId: number, movieTimescale: number, trackDurationSampl
   );
 }
 
+/**
+ * Build 'mvhd' (v0).
+ * @param movieTimescale Timescale.
+ * @param movieDurationMv Duration in movie timescale units.
+ */
 export function mvhd(movieTimescale: number, movieDurationMv: number) {
   return box('mvhd', u32(0), u32(0), u32(0), u32(movieTimescale), u32(movieDurationMv), u32(0x00010000), u16(0x0100), u16(0),
     u32(0), u32(0), MATRIX_UNITY, Buffer.alloc(24, 0), u32(4));
@@ -118,7 +162,7 @@ export function mvhd(movieTimescale: number, movieDurationMv: number) {
 
 // ---------------- codec-agnostic stbl/minf/mdia ----------------
 
-// Choose the right sample entry for this track.
+/** Choose the correct SampleEntry for a track (prefers makeSampleEntry). */
 function chooseSampleEntry(t: MuxTrack): Buffer {
   if (t.makeSampleEntry) {
     const entry = t.makeSampleEntry();
@@ -130,6 +174,11 @@ function chooseSampleEntry(t: MuxTrack): Buffer {
   return mp4aSampleEntry(t.sampleRate, t.channelConfig, t.asc);
 }
 
+/**
+ * Build 'stbl' for an audio track.
+ * @param t Track data.
+ * @param chunkOffsets Chunk offsets for stco.
+ */
 export function stbl_for_track(t: MuxTrack, chunkOffsets: number[]) {
   const entry = chooseSampleEntry(t);
   const spf = (t.samplesPerFrame ?? 1024) >>> 0;
@@ -142,15 +191,30 @@ export function stbl_for_track(t: MuxTrack, chunkOffsets: number[]) {
   );
 }
 
+/**
+ * Build 'minf' for an audio track.
+ * @param t Track data.
+ * @param chunkOffsets Chunk offsets for stco.
+ */
 export function minf_for_track(t: MuxTrack, chunkOffsets: number[]) {
   return box('minf', smhd(), dinf_minimal_url_self(), stbl_for_track(t, chunkOffsets));
 }
 
+/**
+ * Build 'mdia' for an audio track.
+ * @param t Track data.
+ * @param chunkOffsets Chunk offsets for stco.
+ */
 export function mdia_for_track(t: MuxTrack, chunkOffsets: number[]) {
   return box('mdia', mdhd(t.sampleRate, t.mdhdDuration), hdlr_soun(), minf_for_track(t, chunkOffsets));
 }
 
-// Optional helper, if you like the builder pattern:
+/**
+ * Optional builder: returns a trak builder using the given trackId/timescale.
+ * @param t Track data.
+ * @param trackId Track ID.
+ * @param movieTimescale Movie timescale.
+ */
 export function trak_for_track(t: MuxTrack, trackId: number, movieTimescale: number) {
   const trakBox = (mdia: Buffer) => box('trak', tkhd(trackId, movieTimescale, t.mdhdDuration, t.sampleRate), mdia);
   return { build: (chunkOffsets: number[]) => trakBox(mdia_for_track(t, chunkOffsets)) };

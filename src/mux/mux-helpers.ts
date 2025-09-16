@@ -6,11 +6,15 @@ import {
     type MuxTrack, type MuxTx3gTrack,
 } from "../index";
 
+/** Named buffer input. */
 export type InputFile = { name: string; buf: Buffer };
 
+/** Muxer build options. */
 export type MuxBuildOptions = {
-    pcmFrame?: number;        // default 1024
-    saocAscPath?: string;     // required when a .saoc input is present
+    /** PCM samples per frame (default 1024). */
+    pcmFrame?: number;
+    /** Path to SAOC ASC when .saoc is present. */
+    saocAscPath?: string;
 };
 
 export type NormalizedAlbumMeta = {
@@ -27,12 +31,17 @@ export type NormalizedTrackMeta = {
     title?: string; performer?: string; recordedAt?: string;
 };
 
+/** Composer-ready metadata bundle. */
 export type NormalizedMeta = {
     albumMeta?: NormalizedAlbumMeta;
     songMeta?: NormalizedSongMeta;
     perTrackMeta?: NormalizedTrackMeta[];
 };
 
+/**
+ * Detect input kind from filename.
+ * @param filename Path or basename.
+ */
 export function detectKind(filename: string): "aac" | "mp3" | "pcm" | "saoc" | "srt" | "3gp" {
     const q = filename.toLowerCase();
     if (q.endsWith(".aac") || q.endsWith(".adts")) return "aac";
@@ -44,12 +53,22 @@ export function detectKind(filename: string): "aac" | "mp3" | "pcm" | "saoc" | "
     throw new Error(`Unknown input format: ${filename}`);
 }
 
+/**
+ * Guess language (ISO-639-2) from *.xx.srt suffix.
+ * @param filename Subtitle filename.
+ */
 export function guessLangFromFilename(filename: string): string | undefined {
     const m = filename.toLowerCase().match(/\.([a-z]{2,3})\.srt$/);
     return m?.[1];
 }
 
-/** Build audio + subtitle tracks from buffers (no fs here). */
+
+/**
+ * Build audio + subtitle tracks from buffers.
+ * @param inputs Audio/containers.
+ * @param subtitles SRT/3GP subtitle sources.
+ * @param opts Frame sizes, SAOC ASC path.
+ */
 export function buildTracksFromInputs(
     inputs: InputFile[],
     subtitles: InputFile[],
@@ -136,7 +155,11 @@ export function buildTracksFromInputs(
     return { tracks, subtitleTracks };
 }
 
-/** Accepts raw JSON text (file contents or inline). Returns normalized meta for composer. */
+
+/**
+ * Parse CLI JSON meta and normalize for composer.
+ * @param metaJsonText Raw JSON string or undefined.
+ */
 export function normalizeCliMeta(metaJsonText?: string): NormalizedMeta {
     if (!metaJsonText || !metaJsonText.trim()) return {};
 
@@ -187,7 +210,11 @@ export function normalizeCliMeta(metaJsonText?: string): NormalizedMeta {
     return { albumMeta, songMeta, perTrackMeta };
 }
 
-/** Resolve includeImaf: either a JSON text (string) or a boolean legacy flag. */
+
+/**
+ * Resolve includeImaf input: JSON text takes precedence; else legacy boolean.
+ * @returns boolean | string | undefined
+ */
 export function resolveIncludeImaf(imafJsonText?: string, legacyIncludeImaf?: boolean): boolean | string | undefined {
     if (imafJsonText != null) return imafJsonText;   // keep JSON text as-is (composer parses)
     if (legacyIncludeImaf != null) return Boolean(legacyIncludeImaf);

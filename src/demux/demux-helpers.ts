@@ -7,16 +7,25 @@ import {
   extractImafSpecFromIso,
 } from "../index"; // adjust path to your actual export barrel
 
+/** Demux behavior flags and naming hints. */
 export type DemuxOptions = {
-  wantAudio?: boolean;   // default true
-  wantText?: boolean;    // default true
-  wantMeta?: boolean;    // default true
-  wantImaf?: boolean;    // default true
-  debug?: string[];      // tokens: "xml", "tree", "*"
-  basename?: string;     // suggested base name for outputs (no extension)
+  /** Extract audio tracks (default true). */
+  wantAudio?: boolean;
+  /** Extract text (tx3g) tracks (default true). */
+  wantText?: boolean;
+  /** Collect MPEG-7 metadata to JSON (default true). */
+  wantMeta?: boolean;
+  /** Extract IMAF spec boxes to JSON (default true). */
+  wantImaf?: boolean;
+  /** Debug tokens: "xml", "tree", "*" */
+  debug?: string[];
+  /** Base name for output artifacts (no extension). */
+  basename?: string;
 };
 
+/** Named binary output. */
 export type DemuxArtifact = { name: string; data: Buffer };
+/** Demux result bundle. */
 export type DemuxResult = {
   audio: DemuxArtifact[];
   text: DemuxArtifact[];
@@ -29,11 +38,17 @@ export type DemuxResult = {
 // lightweight debug gate; no process.env reads here
 const has = (set: Set<string>, t: string) => set.has("*") || set.has(t);
 
+/**
+ * Demux an ISO-BMFF/IMA buffer into audio files (AAC/MP3/WAV/raw), tx3g 3GP files, and optional JSON sidecars.
+ * @param ab ISO-BMFF bytes.
+ * @param opts See DemuxOptions.
+ * @returns Artifacts, counts, and debug logs.
+ */
 export function demuxImaToArtifacts(ab: ArrayBufferLike, opts: DemuxOptions = {}): DemuxResult {
   const wantAudio = opts.wantAudio !== false;
-  const wantText  = opts.wantText  !== false;
-  const wantMeta  = opts.wantMeta  !== false;
-  const wantImaf  = opts.wantImaf  !== false;
+  const wantText = opts.wantText !== false;
+  const wantMeta = opts.wantMeta !== false;
+  const wantImaf = opts.wantImaf !== false;
   const base = (opts.basename && opts.basename.trim()) || "out";
   const dbgSet = new Set((opts.debug ?? []).map(s => s.trim()).filter(Boolean));
   const logs: string[] = [];
@@ -49,7 +64,7 @@ export function demuxImaToArtifacts(ab: ArrayBufferLike, opts: DemuxOptions = {}
       aIdx++;
       const f2 = a.first2 ?? -1;
       const looksADTS = (f2 & 0xFFF6) === 0xFFF0;
-      const looksMP3  = (f2 & 0xFFE0) === 0xFFE0;
+      const looksMP3 = (f2 & 0xFFE0) === 0xFFE0;
 
       if (a.kind === "mp3" || looksMP3) {
         audioFiles.push({ name: `${base}.audio${aIdx}.mp3`, data: buildMp3Stream(a.frames) });
@@ -106,16 +121,16 @@ export function demuxImaToArtifacts(ab: ArrayBufferLike, opts: DemuxOptions = {}
         logs.push(`[xml] ${lab}: xml=${xb.length}B\n${pretty}`);
       };
       metas.album ? p("album (top-level meta)", metas.album.xml) : logs.push("[xml] album: not found");
-      metas.song  ? p("song (moov/udta/meta)", metas.song.xml)  : logs.push("[xml] song: not found");
+      metas.song ? p("song (moov/udta/meta)", metas.song.xml) : logs.push("[xml] song: not found");
       if (metas.tracks.length) metas.tracks.forEach(t => p(`track#${t.index} (trak/udta/meta)`, t.xml));
       else logs.push("[xml] tracks: none");
     }
 
     const albumXml = metas.album?.xml ? decodeXmlBytes(metas.album.xml) : "";
-    const songXml  = metas.song?.xml  ? decodeXmlBytes(metas.song.xml)  : "";
+    const songXml = metas.song?.xml ? decodeXmlBytes(metas.song.xml) : "";
 
     const albumMetaFull = withAlbumDefaults(albumXml ? mpeg7XmlToAlbum(albumXml) : {});
-    const songMetaFull  = withSongDefaults (songXml  ? mpeg7XmlToSong(songXml)   : {});
+    const songMetaFull = withSongDefaults(songXml ? mpeg7XmlToSong(songXml) : {});
 
     const tracksMetaFull = metas.tracks.map(t => {
       const xml = t.xml ? decodeXmlBytes(t.xml) : "";

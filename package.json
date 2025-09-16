@@ -9,7 +9,9 @@
     "build:types": "dts-bundle-generator -o dist/imaf-mux.min.d.ts src/index.ts",
     "pack:dist": "node -e \"const fs=require('fs');const keep=new Set(['imaf-mux.min.js','imaf-mux.min.d.ts']);fs.readdirSync('dist').forEach(n=>!keep.has(n)&&fs.rmSync('dist/'+n,{recursive:true,force:true}))\"",
     "build": "npm run clean && npm run build:js && npm run build:types && npm run pack:dist",
-    "start": "tsx scripts/audio-tracks-to-imaf.ts"
+    "start": "tsx scripts/audio-tracks-to-imaf.ts",
+    "docs:build": "typedoc",
+    "docs:clean": "rimraf docs/api"
   },
   "exports": {
     ".": {
@@ -29,6 +31,7 @@
     "dts-bundle-generator": "^9.5.1",
     "esbuild": "^0.25.9",
     "tsx": "^4.19.2",
+    "typedoc": "^0.28.13",
     "typescript": "^5.9.2"
   }
 }

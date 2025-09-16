@@ -1,4 +1,6 @@
 //src/iso/mpeg7.ts
+
+/** Album-level MPEG-7 metadata. */
 export interface AlbumMeta {
   title: string;
   artist: string;
@@ -11,6 +13,7 @@ export interface AlbumMeta {
   siteUrl?: string;
 }
 
+/** Song/movie-level MPEG-7 metadata. */
 export interface SongMeta {
   title: string;
   singer?: string;
@@ -27,13 +30,14 @@ export interface SongMeta {
   siteUrl?: string;
 }
 
+/** Track-level MPEG-7 metadata. */
 export interface TrackMeta {
   title?: string;
   performer?: string;
   recordedAt?: string;
 }
 
-// Safe XML escaper without non-null assertions.
+/** XML escape helper. */
 const esc = (s?: string): string => {
   const map: Record<string, string> = {
     '&': '&amp;',
@@ -45,6 +49,11 @@ const esc = (s?: string): string => {
   return input.replace(/[&<>"]/g, ch => (map[ch] !== undefined ? map[ch] : ch));
 };
 
+/**
+ * Build MPEG-7 XML for album-level metadata.
+ * @param a AlbumMeta
+ * @returns XML string
+ */
 export function mpeg7AlbumXML(a: AlbumMeta) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <MPEG7 xmlns="urn:mpeg:mpeg7:schema:2001">
@@ -68,6 +77,11 @@ export function mpeg7AlbumXML(a: AlbumMeta) {
 </MPEG7>`;
 }
 
+/**
+ * Build MPEG-7 XML for song/movie-level metadata.
+ * @param s SongMeta
+ * @returns XML string
+ */
 export function mpeg7SongXML(s: SongMeta) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <MPEG7 xmlns="urn:mpeg:mpeg7:schema:2001">
@@ -95,6 +109,11 @@ export function mpeg7SongXML(s: SongMeta) {
 </MPEG7>`;
 }
 
+/**
+ * Build MPEG-7 XML for track-level metadata.
+ * @param t TrackMeta
+ * @returns XML string
+ */
 export function mpeg7TrackXML(t: TrackMeta) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <MPEG7 xmlns="urn:mpeg:mpeg7:schema:2001">
@@ -112,7 +131,11 @@ export function mpeg7TrackXML(t: TrackMeta) {
 </MPEG7>`;
 }
 
-// --- XML → JSON helpers (add below existing exports) ---
+/**
+ * Decode XML bytes with BOM/UTF detection.
+ * @param xb Byte array
+ * @returns UTF-8/16 string
+ */
 export function decodeXmlBytes(xb: Uint8Array): string {
   if (xb.length >= 2 && xb[0] === 0xFF && xb[1] === 0xFE) return new TextDecoder("utf-16le").decode(xb);
   if (xb.length >= 2 && xb[0] === 0xFE && xb[1] === 0xFF) return new TextDecoder("utf-16be").decode(xb);
@@ -122,7 +145,7 @@ export function decodeXmlBytes(xb: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: false }).decode(xb);
 }
 
-const pick = (xml: string, re: RegExp) => re.exec(xml)?.[1]?.trim();
+/** Pick attribute value from first matching tag. */
 const pickAttr = (xml: string, tagRE: RegExp, attr: string) => {
   const m = tagRE.exec(xml); if (!m) return;
   const t = m[0];
@@ -131,20 +154,25 @@ const pickAttr = (xml: string, tagRE: RegExp, attr: string) => {
 };
 
 // ------------------------------
-// NEW: field lists + defaults
+// field lists + defaults
 // ------------------------------
+
+/** Album field order. */
 export const ALBUM_FIELDS: (keyof AlbumMeta)[] = [
   "title", "artist", "genre", "releaseDate", "production", "publisher", "copyright", "coverUrl", "siteUrl"
 ];
 
+/** Song field order. */
 export const SONG_FIELDS: (keyof SongMeta)[] = [
   "title", "singer", "composer", "lyricist", "genre", "releaseDate", "production", "publisher", "copyright", "isrc", "cdTrackNo", "imageUrl", "siteUrl"
 ];
 
+/** Track field order. */
 export const TRACK_FIELDS: (keyof TrackMeta)[] = [
   "title", "performer", "recordedAt"
 ];
 
+/** Empty album defaults. */
 export function albumDefaults(): AlbumMeta {
   return {
     title: "",
@@ -159,6 +187,7 @@ export function albumDefaults(): AlbumMeta {
   };
 }
 
+/** Empty song defaults. */
 export function songDefaults(): SongMeta {
   return {
     title: "",
@@ -177,6 +206,7 @@ export function songDefaults(): SongMeta {
   };
 }
 
+/** Empty track defaults. */
 export function trackDefaults(): TrackMeta {
   return {
     title: "",
@@ -185,6 +215,11 @@ export function trackDefaults(): TrackMeta {
   };
 }
 
+/**
+ * Merge partial with album defaults.
+ * @param p Partial<AlbumMeta>
+ * @returns AlbumMeta with empty strings for missing fields
+ */
 export function withAlbumDefaults(p?: Partial<AlbumMeta>): AlbumMeta {
   const base = albumDefaults();
   const src = p || {};
@@ -192,6 +227,11 @@ export function withAlbumDefaults(p?: Partial<AlbumMeta>): AlbumMeta {
   return base;
 }
 
+/**
+ * Merge partial with song defaults.
+ * @param p Partial<SongMeta>
+ * @returns SongMeta with empty strings for missing fields
+ */
 export function withSongDefaults(p?: Partial<SongMeta>): SongMeta {
   const base = songDefaults();
   const src = p || {};
@@ -199,6 +239,11 @@ export function withSongDefaults(p?: Partial<SongMeta>): SongMeta {
   return base;
 }
 
+/**
+ * Merge partial with track defaults.
+ * @param p Partial<TrackMeta>
+ * @returns TrackMeta with empty strings for missing fields
+ */
 export function withTrackDefaults(p?: Partial<TrackMeta>): TrackMeta {
   const base = trackDefaults();
   const src = p || {};
@@ -208,9 +253,13 @@ export function withTrackDefaults(p?: Partial<TrackMeta>): TrackMeta {
 
 // ------------------------------
 // simple XML→JSON mappers
-// return Partial<...>, and callers  wrap with
-// withAlbumDefaults/withSongDefaults/withTrackDefaults.
 // ------------------------------
+
+/**
+ * Parse MPEG-7 album XML into fields.
+ * @param xml XML string
+ * @returns Partial<AlbumMeta>
+ */
 export function mpeg7XmlToAlbum(xml: string): Partial<AlbumMeta> {
   const get = (re: RegExp) => (xml.match(re)?.[1] ?? "").trim();
   return {
@@ -228,6 +277,11 @@ export function mpeg7XmlToAlbum(xml: string): Partial<AlbumMeta> {
   };
 }
 
+/**
+ * Parse MPEG-7 song XML into fields.
+ * @param xml XML string
+ * @returns Partial<SongMeta>
+ */
 export function mpeg7XmlToSong(xml: string): Partial<SongMeta> {
   const get = (re: RegExp) => (xml.match(re)?.[1] ?? "").trim();
   return {
@@ -249,6 +303,11 @@ export function mpeg7XmlToSong(xml: string): Partial<SongMeta> {
   };
 }
 
+/**
+ * Parse MPEG-7 track XML into fields.
+ * @param xml XML string
+ * @returns Partial<TrackMeta>
+ */
 export function mpeg7XmlToTrack(xml: string): Partial<TrackMeta> {
   const get = (re: RegExp) => (xml.match(re)?.[1] ?? "").trim();
   return {
