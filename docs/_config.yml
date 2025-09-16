@@ -1,0 +1,5 @@
+title: IMAF Muxer / Demuxer
+description: Pure TypeScript IMAF muxer/demuxer with MPEG-7 metadata and minimal ISO-BMFF builders.
+theme: jekyll-theme-cayman
+plugins:
+  - jekyll-seo-tag
