@@ -184,10 +184,12 @@ Build an `.ima` from audio + (optional) subtitles and meta.
 
 ```
 
-tsx scripts/mux-imaf.ts --out out.ima&#x20;
-\--in lead.aac --in drums.mp3 --subtitle subs.srt&#x20;
-\--meta meta.json --imaf imaf.json&#x20;
-\[--layout ftyp-mdat-moov|ftyp-moov-mdat] \[--pcm-frame N] \[--saoc-asc path]
+tsx scripts/mux-imaf.ts --out out.ima
+\--in lead.aac --in drums.mp3 --subtitle subs.srt
+\--meta meta.json --imaf imaf.json
+\[--layout ftyp-mdat-moov|ftyp-moov-mdat]
+\[--pcm-frame N]
+\[--saoc-asc path]
 
 ```
 
@@ -200,8 +202,12 @@ Extract streams and metadata from an `.ima/.mp4`.
 
 ```
 
-tsx scripts/demux-imaf.ts --in input.ima \[--out-dir dir]
-\[--no-audio] \[--no-text] \[--no-meta] \[--no-imaf]
+tsx scripts/demux-imaf.ts --in input.ima
+\[--out-dir dir]
+\[--no-audio]
+\[--no-text]
+\[--no-meta]
+\[--no-imaf]
 \[--debug "\*|xml|tree"]
 
 ```
