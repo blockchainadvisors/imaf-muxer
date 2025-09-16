@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IMAF Muxer / Demuxer</title>
+  <style>
+    :root{--fg:#0b1020;--muted:#5b647a;--bg:#f7f9fc;--card:#fff;--acc:#2563eb}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
+    .wrap{max-width:920px;margin:48px auto;padding:0 20px}
+    .hero{background:var(--card);border:1px solid #e6e9ef;border-radius:16px;padding:28px 28px}
+    h1{margin:0 0 6px 0;font-size:28px}
+    p.lead{margin:6px 0 16px 0;color:var(--muted)}
+    .btns{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0 4px}
+    .btn{display:inline-block;padding:10px 14px;border-radius:10px;text-decoration:none;border:1px solid #d8deea;background:#fff;color:var(--fg)}
+    .btn.primary{background:var(--acc);color:#fff;border-color:var(--acc)}
+    h2{margin-top:28px}
+    pre{background:#0b1020;color:#e6edf3;padding:14px;border-radius:10px;overflow:auto}
+    code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    ul{margin:0 0 0 20px}
+    footer{margin-top:28px;color:var(--muted);font-size:14px}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <h1>IMAF Muxer / Demuxer</h1>
+      <p class="lead">Pure TypeScript muxer/demuxer for ISO/IEC 23000-12 (IMAF) with MPEG-7 metadata and minimal ISO-BMFF builders.</p>
+      <div class="btns">
+        <a class="btn primary" href="api/">API Reference</a>
+        <a class="btn" href="https://github.com/blockchainadvisors/imaf-muxer">GitHub Repo</a>
+      </div>
+    </section>
+
+    <section>
+      <h2>What it does</h2>
+      <ul>
+        <li><strong>Mux</strong> AAC/ADTS, MP3, WAV/PCM (SAOC experimental) + tx3g → <code>.imaf</code> (MP4)</li>
+        <li><strong>Demux</strong> streams, extract MPEG-7 JSON, convert <strong>tx3g ⇄ SRT</strong></li>
+        <li>Author/read IMAF groups, presets, rules (<code>grco/prco/ruco</code>)</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Quick start</h2>
+      <pre><code># Mux
+npx tsx scripts/mux-imaf.ts --out out.ima --in a.aac --in b.aac --meta meta/song.json
+
+# Demux
+npx tsx scripts/demux-imaf.ts --in out.ima --out-dir extracted/</code></pre>
+    </section>
+
+    <footer>Built by Blockchain Advisors Ltd • API: <a href="api/">/api/</a></footer>
+  </main>
+</body>
+</html>
