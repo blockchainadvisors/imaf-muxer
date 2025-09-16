@@ -1,3 +1,11 @@
+---
+layout: default
+title: User Guide
+permalink: /guide/
+---
+
+# User Guide
+
 # IMAF Muxer/Demuxer – Developer Documentation
 
 _Generated on 2025-09-16_

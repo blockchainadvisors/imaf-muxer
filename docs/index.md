@@ -27,6 +27,6 @@ npx tsx scripts/demux-imaf.ts --in out.ima --out-dir extracted/
 ````
 
 ## Links
-
-* **API Docs:** [https://blockchainadvisors.github.io/imaf-muxer/api/](https://blockchainadvisors.github.io/imaf-muxer/api/)
-* **Repository:** [https://github.com/blockchainadvisors/imaf-muxer](https://github.com/blockchainadvisors/imaf-muxer)
+- [User Guide]({{ '/guide/' | relative_url }})
+- [API Reference]({{ '/api/' | relative_url }})
+- [Repository](https://github.com/blockchainadvisors/imaf-muxer)
