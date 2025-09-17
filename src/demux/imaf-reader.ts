@@ -1,6 +1,7 @@
 // src/demux/imaf-reader.ts
-// Pure ISO-BMFF reader for IMA files: no fs/path; exports helpers that return Buffers.
+// Pure ISO-BMFF reader for IMA files: no fs/path; exports helpers that return Uint8Array.
 import { decodeXmlBytes } from "../iso/mpeg7";
+import { box, u32, u16, str, concat } from "../iso/bytes";
 
 let DEBUG = new Set<string>();
 const dbg = (ns: string, ...a: any[]) => { if (DEBUG.has("*") || DEBUG.has(ns)) console.log(`[${ns}]`, ...a); };
@@ -426,7 +427,7 @@ export function readIma(ab: ArrayBufferLike, opts?: { debug?: string[] | Set<str
   return { audio, texts };
 }
 
-// ---- Audio & tx3g builders (return Buffers) ----
+// ---- Audio & tx3g builders (return Uint8Array) ----
 
 /** ADTS sampling-rate indices. */
 const SR_INDEX: Record<number, number> = { 96000: 0, 88200: 1, 64000: 2, 48000: 3, 44100: 4, 32000: 5, 24000: 6, 22050: 7, 16000: 8, 12000: 9, 11025: 10, 8000: 11, 7350: 12 };
@@ -440,36 +441,44 @@ function adtsHeader(aot: number, sr: number, ch: number, frameLen: number) {
 }
 
 /** Wrap raw AAC frames with ADTS headers (no-op if already ADTS). */
-export function buildAdtsStream(frames: Uint8Array[], opts: { sr: number; ch: number; aot?: number; first2?: number }) {
+export function buildAdtsStream(frames: Uint8Array[], opts: { sr: number; ch: number; aot?: number; first2?: number }): Uint8Array {
   const looksADTS = opts.first2 !== undefined && ((opts.first2 & 0xFFF6) === 0xFFF0);
-  if (looksADTS) return Buffer.concat(frames.map(f => Buffer.from(f)));
-  const aot = opts.aot ?? 2; const out: Buffer[] = [];
-  for (const f of frames) { out.push(Buffer.from(adtsHeader(aot, opts.sr, opts.ch, f.byteLength))); out.push(Buffer.from(f)); }
-  return Buffer.concat(out);
+  if (looksADTS) return concat(...frames);
+  const aot = opts.aot ?? 2;
+  const parts: Uint8Array[] = [];
+  for (const f of frames) { parts.push(adtsHeader(aot, opts.sr, opts.ch, f.byteLength)); parts.push(f); }
+  return concat(...parts);
 }
 
 /** Concatenate MP3 frames. */
-export function buildMp3Stream(frames: Uint8Array[]) {
-  return Buffer.concat(frames.map(f => Buffer.from(f)));
+export function buildMp3Stream(frames: Uint8Array[]): Uint8Array {
+  return concat(...frames);
 }
 
 /** Build a minimal PCM WAV file from raw PCM. */
-export function buildWavFile(pcm: Uint8Array, sr: number, ch: number, bits: number) {
+export function buildWavFile(pcm: Uint8Array, sr: number, ch: number, bits: number): Uint8Array {
   const byteRate = sr * ch * (bits / 8); const blockAlign = ch * (bits / 8);
-  const hdr = Buffer.alloc(44);
-  hdr.write("RIFF", 0); hdr.writeUInt32LE(36 + pcm.length, 4); hdr.write("WAVE", 8);
-  hdr.write("fmt ", 12); hdr.writeUInt32LE(16, 16); hdr.writeUInt16LE(1, 20);
-  hdr.writeUInt16LE(ch, 22); hdr.writeUInt32LE(sr, 24); hdr.writeUInt32LE(byteRate, 28);
-  hdr.writeUInt16LE(blockAlign, 32); hdr.writeUInt16LE(bits, 34);
-  hdr.write("data", 36); hdr.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([hdr, Buffer.from(pcm)]);
+  const hdr = new Uint8Array(44);
+  const dvh = new DataView(hdr.buffer, hdr.byteOffset, hdr.byteLength);
+  // "RIFF"
+  hdr[0] = 0x52; hdr[1] = 0x49; hdr[2] = 0x46; hdr[3] = 0x46;
+  dvh.setUint32(4, 36 + pcm.length, true);
+  // "WAVE"
+  hdr[8] = 0x57; hdr[9] = 0x41; hdr[10] = 0x56; hdr[11] = 0x45;
+  // "fmt "
+  hdr[12] = 0x66; hdr[13] = 0x6d; hdr[14] = 0x74; hdr[15] = 0x20;
+  dvh.setUint32(16, 16, true);              // fmt chunk size
+  dvh.setUint16(20, 1, true);               // PCM
+  dvh.setUint16(22, ch, true);
+  dvh.setUint32(24, sr, true);
+  dvh.setUint32(28, byteRate, true);
+  dvh.setUint16(32, blockAlign, true);
+  dvh.setUint16(34, bits, true);
+  // "data"
+  hdr[36] = 0x64; hdr[37] = 0x61; hdr[38] = 0x74; hdr[39] = 0x61;
+  dvh.setUint32(40, pcm.length, true);
+  return concat(hdr, pcm);
 }
-
-// tiny box utils for tx3g .3gp
-function u32(n: number) { const b = Buffer.alloc(4); b.writeUInt32BE(n >>> 0, 0); return b; }
-function u16(n: number) { const b = Buffer.alloc(2); b.writeUInt16BE(n >>> 0, 0); return b; }
-function str4(s: string) { return Buffer.from(s, "ascii"); }
-function box(type: string, ...payload: Buffer[]): Buffer { const body = Buffer.concat(payload); return Buffer.concat([u32(8 + body.length), str4(type), body]); }
 
 /**
  * Build a tiny 3GP file containing a single tx3g track.
@@ -478,52 +487,81 @@ function box(type: string, ...payload: Buffer[]): Buffer { const body = Buffer.c
  * @param durations Per-sample durations (timescale units).
  * @param timescale mdhd timescale.
  */
-export function buildTx3g3gpFile(sampleEntry: Uint8Array, frames: Uint8Array[], durations: number[], timescale: number) {
+export function buildTx3g3gpFile(sampleEntry: Uint8Array, frames: Uint8Array[], durations: number[], timescale: number): Uint8Array {
   const sizes = frames.map(f => f.byteLength);
-  const mdatPayload = Buffer.concat(frames.map(f => Buffer.from(f)));
+  const mdatPayload = concat(...frames);
   const mdat = box("mdat", mdatPayload);
 
+  // Offsets are relative to start of mdat payload (after its 8-byte header)
   const base = 8; const offsets: number[] = []; let cur = base;
   for (const s of sizes) { offsets.push(cur); cur += s; }
 
-  const stsd = box("stsd", u32(0), u32(1), Buffer.from(sampleEntry));
-  const sttsEntries: Buffer[] = [];
+  const stsd = box("stsd", u32(0), u32(1), sampleEntry);
+
+  const sttsEntries: Uint8Array[] = [];
   if (durations.length) {
     let run = 1, last = durations[0];
     for (let i = 1; i < durations.length; i++) {
-      if (durations[i] === last) run++; else { sttsEntries.push(u32(run), u32(last)); run = 1; last = durations[i]; }
+      if (durations[i] === last) run++;
+      else { sttsEntries.push(u32(run), u32(last)); run = 1; last = durations[i]; }
     }
     sttsEntries.push(u32(run), u32(last));
   }
-  const stts = box("stts", u32(0), u32(sttsEntries.length / 2), Buffer.concat(sttsEntries));
+  const stts = box("stts", u32(0), u32(sttsEntries.length / 2), sttsEntries.length ? concat(...sttsEntries) : new Uint8Array(0));
+
   const stsc = box("stsc", u32(0), u32(1), u32(1), u32(1), u32(1));
-  const stszArr = Buffer.alloc(4 * sizes.length); sizes.forEach((s, i) => stszArr.writeUInt32BE(s >>> 0, i * 4));
+
+  const stszArr = new Uint8Array(4 * sizes.length);
+  const dvsz = new DataView(stszArr.buffer, stszArr.byteOffset, stszArr.byteLength);
+  sizes.forEach((s, i) => dvsz.setUint32(i * 4, s >>> 0, false));
   const stsz = box("stsz", u32(0), u32(0), u32(sizes.length), stszArr);
-  const stcoArr = Buffer.alloc(4 * offsets.length); offsets.forEach((o, i) => stcoArr.writeUInt32BE(o >>> 0, i * 4));
+
+  const stcoArr = new Uint8Array(4 * offsets.length);
+  const dvco = new DataView(stcoArr.buffer, stcoArr.byteOffset, stcoArr.byteLength);
+  offsets.forEach((o, i) => dvco.setUint32(i * 4, o >>> 0, false));
   const stco = box("stco", u32(0), u32(offsets.length), stcoArr);
-  const dref = box("dref", u32(0), u32(1), box("url ", Buffer.from([0, 0, 0, 1])));
+
+  const dref = box("dref", u32(0), u32(1), box("url ", new Uint8Array([0, 0, 0, 1])));
   const dinf = box("dinf", dref);
   const nmhd = box("nmhd", u32(0));
   const stbl = box("stbl", stsd, stts, stsc, stsz, stco);
   const minf = box("minf", nmhd, dinf, stbl);
 
   const mdhd = box("mdhd", u32(0), u32(0), u32(0), u32(timescale), u32(durations.reduce((a, b) => a + b, 0)), u16(0x55C4), u16(0));
-  const hdlr = box("hdlr", u32(0), u32(0), str4("text"), u32(0), u32(0), u32(0), Buffer.from("Timed Text\0", "ascii"));
+  const hdlr = box("hdlr", u32(0), u32(0), str("text"), u32(0), u32(0), u32(0), str("Timed Text\0"));
   const mdia = box("mdia", mdhd, hdlr, minf);
 
   const mvhdTs = 1000;
   const mvhdDur = Math.round((durations.reduce((a, b) => a + b, 0) / timescale) * mvhdTs);
-  const mvhd = box("mvhd", u32(0), u32(0), u32(0), u32(mvhdTs), u32(mvhdDur),
-    u32(0x00010000), u16(0x0100), u16(0), Buffer.alloc(10, 0),
-    Buffer.from([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-    Buffer.alloc(24, 0), u32(2));
-  const tkhd = box("tkhd", Buffer.from([0, 0, 0, 7]), u32(0), u32(0), u32(1), u32(0),
-    u32(mvhdDur), Buffer.alloc(8, 0), u16(0), u16(0), u16(0), u16(0),
-    Buffer.from([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]),
-    u32(0), u32(0));
+  // Minimal mvhd (matrix + padding inlined as raw bytes)
+  const MATRIX = new Uint8Array([
+    0x00,0x01,0x00,0x00, 0,0,0,0, 0,0,0,0,
+    0,0,0,0, 0x00,0x01,0x00,0x00, 0,0,0,0,
+    0,0,0,0, 0,0,0,0, 0x40,0,0,0
+  ]);
+  const mvhd = box("mvhd",
+    u32(0), u32(0), u32(0), u32(mvhdTs), u32(mvhdDur),
+    u32(0x00010000), u16(0x0100), u16(0),
+    u32(0), u32(0),
+    MATRIX,
+    new Uint8Array(24), u32(2)
+  );
+
+  const tkhdFlags = new Uint8Array([0,0,0,7]);
+  const TK_MATRIX = new Uint8Array([
+    0,1,0,0, 0,0,0,0, 0,0,0,0,
+    0,0,0,0, 0,1,0,0, 0,0,0,0,
+    0,0,0,0, 0,0,0,0, 0,1,0,0
+  ]);
+  const tkhd = box("tkhd",
+    tkhdFlags, u32(0), u32(0), u32(1), u32(0),
+    u32(mvhdDur), new Uint8Array(8), u16(0), u16(0), u16(0), u16(0),
+    TK_MATRIX, u32(0), u32(0)
+  );
   const trak = box("trak", tkhd, mdia);
   const moov = box("moov", mvhd, trak);
-  const ftyp = box("ftyp", Buffer.from("isom", "ascii"), u32(0x200), Buffer.from("isom3gp6mp41", "ascii"));
 
-  return Buffer.concat([ftyp, mdat, moov]);
+  const ftyp = box("ftyp", str("isom"), u32(0x200), str("isom3gp6mp41"));
+
+  return concat(ftyp, mdat, moov);
 }

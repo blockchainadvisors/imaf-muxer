@@ -63,9 +63,10 @@ export type Group = {
  * @param flags FullBox flags (default 0x02)
  */
 export function grupBox(g: Group, flags = 0x02) {
-  const elems = Buffer.alloc(4 * g.elementIDs.length);
-  g.elementIDs.forEach((id, i) => elems.writeUInt32BE(id >>> 0, i * 4));
-  const parts: Buffer[] = [
+  const elems = new Uint8Array(4 * g.elementIDs.length);
+  const dv = new DataView(elems.buffer, elems.byteOffset, elems.byteLength);
+  g.elementIDs.forEach((id, i) => dv.setUint32(i * 4, id >>> 0, false));
+  const parts: Uint8Array[] = [
     full(0, flags),
     u32(g.groupID >>> 0),
     u16(g.elementIDs.length),
@@ -104,11 +105,23 @@ export type Preset = {
  * @throws If perElementVolumeIndex length mismatches elementIDs.
  */
 export function prstBox(p: Preset) {
-  if (p.perElementVolumeIndex.length !== p.elementIDs.length) throw new Error('perElementVolumeIndex length mismatch');
-  const elemIDs = Buffer.alloc(4 * p.elementIDs.length);
-  p.elementIDs.forEach((id, i) => elemIDs.writeUInt32BE(id >>> 0, i * 4));
-  const perElem = Buffer.from(p.perElementVolumeIndex.map(x => (x | 0) & 0xff));
-  return box('prst',
+  if (p.perElementVolumeIndex.length !== p.elementIDs.length) {
+    throw new Error('perElementVolumeIndex length mismatch');
+  }
+
+  // elemIDs: u32 BE array
+  const elemIDs = new Uint8Array(4 * p.elementIDs.length);
+  {
+    const dv = new DataView(elemIDs.buffer, elemIDs.byteOffset, elemIDs.byteLength);
+    p.elementIDs.forEach((id, i) => dv.setUint32(i * 4, id >>> 0, false));
+  }
+
+  // per-element volume indices: u8 array
+  const perElem = new Uint8Array(p.perElementVolumeIndex.length);
+  p.perElementVolumeIndex.forEach((x, i) => { perElem[i] = (x | 0) & 0xff; });
+
+  return box(
+    'prst',
     full(0, p.flags ?? 0x02),
     u8(p.presetID & 0xff),
     u8(p.elementIDs.length & 0xff),

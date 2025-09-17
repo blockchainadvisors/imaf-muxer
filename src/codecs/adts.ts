@@ -1,4 +1,4 @@
-//src/codecs/adts.ts - parse ADTS AAC files to get raw AAC frames and AudioSpecificConfig
+// src/codecs/adts.ts - parse ADTS AAC files to get raw AAC frames and AudioSpecificConfig
 
 /** Parsed AAC (ADTS) track info for muxing. */
 export type AacTrack = {
@@ -7,9 +7,9 @@ export type AacTrack = {
   /** Channel configuration (1=mono, 2=stereo, etc.). */
   channelConfig: number;
   /** AudioSpecificConfig (ASC) bytes. */
-  asc: Buffer;
+  asc: Uint8Array;
   /** Raw AAC frame payloads (ADTS headers stripped). */
-  frames: Buffer[];
+  frames: Uint8Array[];
   /** Byte size of each frame in `frames`. */
   sizes: number[];
   /** Sum of all frame bytes. */
@@ -29,39 +29,64 @@ const samplingFreqIndexToRate: Record<number, number> = {
 /**
  * Parse an ADTS AAC buffer into raw frames and build ASC.
  * Strips ADTS headers; derives sampleRate/channelConfig from the first frame.
- * @param buf ADTS file contents.
+ * @param buf ADTS file contents (Uint8Array).
  * @returns AacTrack with frames, sizes, ASC, and basic stats.
  * @throws If no valid ADTS frames are found.
  */
-export function parseAdtsFile(buf: Buffer): AacTrack {
+export function parseAdtsFile(buf: Uint8Array): AacTrack {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+
   let off = 0; let sampleRate = 0, channelConfig = 2;
-  const frames: Buffer[] = []; const sizes: number[] = [];
-  let frameCount = 0; let totalBytes = 0; let asc: Buffer | null = null;
+  const frames: Uint8Array[] = []; const sizes: number[] = [];
+  let frameCount = 0; let totalBytes = 0; let asc: Uint8Array | null = null;
 
   while (off + 7 <= buf.length) {
-    if (buf.readUInt16BE(off) >> 4 !== 0x0FFF) break;
+    // syncword 0xFFF (12 bits) → high 12 bits of first 16 bits are all 1
+    if ((dv.getUint16(off, false) >> 4) !== 0x0FFF) break;
+
     const protectionAbsent = buf[off + 1] & 0x01;
     const profile = (buf[off + 2] >> 6) & 0x03;
     const sfIndex = (buf[off + 2] >> 2) & 0x0F;
     const chanCfg = ((buf[off + 2] & 0x01) << 2) | ((buf[off + 3] >> 6) & 0x03);
-    const frameLength = ((buf[off + 3] & 0x03) << 11) | (buf[off + 4] << 3) | ((buf[off + 5] >> 5) & 0x07);
-    if (off + frameLength > buf.length) break;
+
+    const frameLength =
+      ((buf[off + 3] & 0x03) << 11) |
+      (buf[off + 4] << 3) |
+      ((buf[off + 5] >> 5) & 0x07);
+
+    if (frameLength < 7 || off + frameLength > buf.length) break;
 
     if (!asc) {
       sampleRate = samplingFreqIndexToRate[sfIndex] || 48000;
       channelConfig = chanCfg;
-      const aot = profile + 1;
+      const aot = profile + 1; // AAC LC etc.
       const b0 = (aot << 3) | ((sfIndex & 0x0E) >> 1);
       const b1 = ((sfIndex & 0x01) << 7) | ((channelConfig & 0x0F) << 3);
-      asc = Buffer.from([b0, b1]);
+      asc = new Uint8Array([b0 & 0xFF, b1 & 0xFF]);
     }
 
     const headerLen = protectionAbsent ? 7 : 9;
-    const aacPayload = buf.subarray(off + headerLen, off + frameLength);
-    frames.push(aacPayload); sizes.push(aacPayload.length);
-    totalBytes += aacPayload.length; frameCount++; off += frameLength;
+    const start = off + headerLen;
+    const end = off + frameLength;
+    const aacPayload = buf.subarray(start, end);
+
+    frames.push(aacPayload);
+    sizes.push(aacPayload.length);
+    totalBytes += aacPayload.length;
+    frameCount++;
+    off += frameLength;
   }
+
   if (!asc || frameCount === 0) throw new Error('No ADTS frames found');
 
-  return { sampleRate, channelConfig, asc, frames, sizes, totalBytes, frameCount, mdhdDuration: frameCount * 1024 };
+  return {
+    sampleRate,
+    channelConfig,
+    asc,
+    frames,
+    sizes,
+    totalBytes,
+    frameCount,
+    mdhdDuration: frameCount * 1024,
+  };
 }

@@ -1,5 +1,5 @@
 // src/iso/subtitle.ts
-import { u8, u16, u32, i16, str, box, full } from "./bytes";
+import { u8, u16, u32, i16, str, box, full, pad, cstr, concat } from "./bytes";
 
 /** One subtitle cue in milliseconds. */
 export type SubtitleCue = {
@@ -26,7 +26,7 @@ export type MuxTx3gTrack = {
   /** mdhd language (e.g., "eng"). */
   language?: string;
   /** Builds tx3g SampleEntry. */
-  makeSampleEntry?: () => Uint8Array | Buffer;
+  makeSampleEntry?: () => Uint8Array;
 };
 
 // ---- Minimal tx3g sample entry (ISO/IEC 14496-17) ----
@@ -39,30 +39,30 @@ export type MuxTx3gTrack = {
 export function tx3gSampleEntry(opts?: {
   defaultFontId?: number; defaultFontName?: string;
   fontSize?: number; textColorRGBA?: [number, number, number, number];
-}) {
+}): Uint8Array {
   const fontId = opts?.defaultFontId ?? 1;
   const fontName = opts?.defaultFontName ?? "Sans-Serif";
   const fontSize = opts?.fontSize ?? 18;
   const [r, g, b, a] = opts?.textColorRGBA ?? [255, 255, 255, 255];
 
   // TextSampleEntry (tx3g) extends SampleEntry: 6 reserved + data_reference_index
-  const sampleEntryHeader = Buffer.concat([Buffer.alloc(6, 0), u16(1)]);
+  const sampleEntryHeader = concat(pad(6), u16(1));
 
   // DisplayFlags(4), hJust(1), vJust(1), bgRGBA(4)
-  const display = Buffer.concat([u32(0), u8(1), u8(1), u8(r), u8(g), u8(b), u8(a)]);
+  const display = concat(u32(0), u8(1), u8(1), u8(r), u8(g), u8(b), u8(a));
 
   // BoxRecord (top,left,bottom,right) all i16
-  const boxRecord = Buffer.concat([i16(0), i16(0), i16(0), i16(0)]);
+  const boxRecord = concat(i16(0), i16(0), i16(0), i16(0));
 
   // StyleRecord: startChar(2), endChar(2), fontId(2), face(1), size(1), colorRGBA(4)
-  const styleRecord = Buffer.concat([u16(0), u16(0xFFFF), u16(fontId), u8(0), u8(fontSize), u8(r), u8(g), u8(b), u8(a)]);
+  const styleRecord = concat(u16(0), u16(0xFFFF), u16(fontId), u8(0), u8(fontSize), u8(r), u8(g), u8(b), u8(a));
 
   // FontTableBox ('ftab')
-  const fname = Buffer.from(fontName, "utf8");
-  const ftabPayload = Buffer.concat([u16(1), u16(fontId), u8(fname.length), fname]);
+  const fname = new TextEncoder().encode(fontName);
+  const ftabPayload = concat(u16(1), u16(fontId), u8(fname.length), fname);
   const ftab = box("ftab", ftabPayload);
 
-  const payload = Buffer.concat([sampleEntryHeader, display, boxRecord, styleRecord, ftab]);
+  const payload = concat(sampleEntryHeader, display, boxRecord, styleRecord, ftab);
   return box("tx3g", payload);
 }
 
@@ -73,9 +73,9 @@ export function tx3gSampleEntry(opts?: {
  * @param text Cue text.
  */
 export function encodeTx3gSample(text: string): Uint8Array {
-  const body = Buffer.from(text, "utf8");
+  const body = new TextEncoder().encode(text);
   const hdr = u16(body.length);
-  return Buffer.concat([hdr, body]);
+  return concat(hdr, body);
 }
 
 // ---- STTS from per-sample durations (run-length encoded) ----
@@ -84,7 +84,7 @@ export function encodeTx3gSample(text: string): Uint8Array {
  * Build 'stts' from an array of per-sample durations.
  * @param durations Timescale units per sample.
  */
-export function stts_from_durations(durations: number[]) {
+export function stts_from_durations(durations: number[]): Uint8Array {
   // coalesce runs of equal duration
   const entries: Array<{ count: number; delta: number }> = [];
   for (const d of durations) {
@@ -92,17 +92,18 @@ export function stts_from_durations(durations: number[]) {
     if (last && last.delta === d) last.count++;
     else entries.push({ count: 1, delta: d >>> 0 });
   }
-  const table = Buffer.alloc(entries.length * 8);
+  const table = new Uint8Array(entries.length * 8);
+  const dv = new DataView(table.buffer);
   entries.forEach((e, i) => {
-    table.writeUInt32BE(e.count >>> 0, i * 8);
-    table.writeUInt32BE(e.delta >>> 0, i * 8 + 4);
+    dv.setUint32(i * 8, e.count >>> 0, false);
+    dv.setUint32(i * 8 + 4, e.delta >>> 0, false);
   });
   return box("stts", u32(0), u32(entries.length), table);
 }
 
 /** Single-entry 'stsd' wrapping a tx3g SampleEntry. */
-export const stsd_tx3g = (entry: Uint8Array | Buffer) =>
-  box("stsd", u32(0), u32(1), Buffer.isBuffer(entry) ? entry : Buffer.from(entry));
+export const stsd_tx3g = (entry: Uint8Array) =>
+  box("stsd", u32(0), u32(1), entry);
 
 /** Trivial 'stsc' (1:1 mapping). */
 export const stsc = () => box("stsc", u32(0), u32(1), u32(1), u32(1), u32(1));
@@ -112,8 +113,9 @@ export const stsc = () => box("stsc", u32(0), u32(1), u32(1), u32(1), u32(1));
  * @param sizes Per-sample byte sizes.
  */
 export const stsz = (sizes: number[]) => {
-  const arr = Buffer.alloc(4 * sizes.length);
-  sizes.forEach((s, i) => arr.writeUInt32BE(s >>> 0, i * 4));
+  const arr = new Uint8Array(4 * sizes.length);
+  const dv = new DataView(arr.buffer);
+  sizes.forEach((s, i) => dv.setUint32(i * 4, s >>> 0, false));
   return box("stsz", u32(0), u32(0), u32(sizes.length), arr);
 };
 
@@ -122,17 +124,19 @@ export const stsz = (sizes: number[]) => {
  * @param offsets File offsets (u32).
  */
 export const stco = (offsets: number[]) => {
-  const arr = Buffer.alloc(4 * offsets.length);
-  offsets.forEach((o, i) => arr.writeUInt32BE(o >>> 0, i * 4));
+  const arr = new Uint8Array(4 * offsets.length);
+  const dv = new DataView(arr.buffer);
+  offsets.forEach((o, i) => dv.setUint32(i * 4, o >>> 0, false));
   return box("stco", u32(0), u32(offsets.length), arr);
 };
 
 // ---- media boxes for text ----
 
 /** Null media header ('nmhd'). */
-export const nmhd = () => box("nmhd", u32(0));             // null media header for non-audio/video
+export const nmhd = () => box("nmhd", u32(0));
 /** 'hdlr' for Timed Text. */
-export const hdlr_text = () => box("hdlr", u32(0), u32(0), str("text"), u32(0), u32(0), u32(0), Buffer.from("Timed Text\0", "ascii"));
+export const hdlr_text = () =>
+  box("hdlr", u32(0), u32(0), str("text"), u32(0), u32(0), u32(0), cstr("Timed Text"));
 
 /**
  * Build 'mdhd' (version 0).
@@ -140,10 +144,8 @@ export const hdlr_text = () => box("hdlr", u32(0), u32(0), str("text"), u32(0), 
  * @param duration Duration in timescale units.
  * @param lang ISO-639-2/T (default 'und').
  */
-export function mdhd(timescale: number, duration: number, lang?: string) {
-  // version 0 mdhd: creation, modification, timescale, duration, lang(2b+pad), pre_defined
+export function mdhd(timescale: number, duration: number, lang?: string): Uint8Array {
   const creation = u32(0), modification = u32(0);
-  // ISO-639-2/T packed (5 bits per char), keep simple: default 'und'
   const l = (lang && lang.length === 3) ? lang : "und";
   const packed =
     ((l.charCodeAt(0) - 0x60) << 10) |
@@ -157,8 +159,8 @@ export function mdhd(timescale: number, duration: number, lang?: string) {
  * @param t Track data.
  * @param chunkOffsets Chunk offsets for stco.
  */
-export function stbl_for_tx3g(t: MuxTx3gTrack, chunkOffsets: number[]) {
-  const entry = t.makeSampleEntry ? (Buffer.isBuffer(t.makeSampleEntry()) ? t.makeSampleEntry() as Buffer : Buffer.from(t.makeSampleEntry()!)) : tx3gSampleEntry();
+export function stbl_for_tx3g(t: MuxTx3gTrack, chunkOffsets: number[]): Uint8Array {
+  const entry = t.makeSampleEntry ? t.makeSampleEntry() : tx3gSampleEntry();
   return box("stbl",
     stsd_tx3g(entry),
     stts_from_durations(t.durations),
@@ -173,8 +175,11 @@ export function stbl_for_tx3g(t: MuxTx3gTrack, chunkOffsets: number[]) {
  * @param t Track data.
  * @param chunkOffsets Chunk offsets for stco.
  */
-export function minf_for_tx3g(t: MuxTx3gTrack, chunkOffsets: number[]) {
-  return box("minf", nmhd(), /* dref */ box("dinf", box("dref", u32(0), u32(1), box("url ", full(0, 1)))), stbl_for_tx3g(t, chunkOffsets));
+export function minf_for_tx3g(t: MuxTx3gTrack, chunkOffsets: number[]): Uint8Array {
+  // dinf/dref/url with self-contained flag
+  const dref = box("dref", u32(0), u32(1), box("url ", full(0, 1)));
+  const dinf = box("dinf", dref);
+  return box("minf", nmhd(), dinf, stbl_for_tx3g(t, chunkOffsets));
 }
 
 /**
@@ -182,7 +187,7 @@ export function minf_for_tx3g(t: MuxTx3gTrack, chunkOffsets: number[]) {
  * @param t Track data.
  * @param chunkOffsets Chunk offsets for stco.
  */
-export function mdia_for_tx3g(t: MuxTx3gTrack, chunkOffsets: number[]) {
+export function mdia_for_tx3g(t: MuxTx3gTrack, chunkOffsets: number[]): Uint8Array {
   return box("mdia", mdhd(t.timescale, t.mdhdDuration, t.language), hdlr_text(), minf_for_tx3g(t, chunkOffsets));
 }
 
@@ -193,7 +198,10 @@ export function mdia_for_tx3g(t: MuxTx3gTrack, chunkOffsets: number[]) {
  * @param cues Subtitle cues.
  * @param opts { timescale, language, sampleEntry }.
  */
-export function buildTx3gTrack(cues: SubtitleCue[], opts?: { timescale?: number; language?: string; sampleEntry?: Parameters<typeof tx3gSampleEntry>[0] }): MuxTx3gTrack {
+export function buildTx3gTrack(
+  cues: SubtitleCue[],
+  opts?: { timescale?: number; language?: string; sampleEntry?: Parameters<typeof tx3gSampleEntry>[0] }
+): MuxTx3gTrack {
   const timescale = opts?.timescale ?? 1000;
   const frames: Uint8Array[] = [];
   const sizes: number[] = [];
