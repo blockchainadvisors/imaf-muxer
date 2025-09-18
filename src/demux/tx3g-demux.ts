@@ -28,7 +28,7 @@ const be64 = (b: DataView, o: number) => {
   const hi = b.getUint32(o, false), lo = b.getUint32(o + 4, false);
   return hi * 2 ** 32 + lo;
 };
-const fourcc = (a: ArrayBufferLike, o: number) => new TextDecoder("ascii").decode(new Uint8Array(a, o, 4));
+const fourcc = (a: ArrayBufferLike, o: number) => new TextDecoder("ascii").decode(new Uint8Array(a as ArrayBuffer, o, 4));
 
 /** Iterate MP4 boxes in [from,to). */
 function* boxes(ab: ArrayBufferLike, from = 0, to = (ab as ArrayBuffer).byteLength): Generator<Box> {
@@ -195,14 +195,11 @@ function decodeTx3gSample(ab: ArrayBufferLike, offset: number): string {
   const len = be16(dv, offset);
   const bytes = new Uint8Array(ab as ArrayBuffer, offset + 2, len);
   const txt = new TextDecoder("utf-8").decode(bytes);
-  // Ignore any trailing style/modifier boxes in the sample
   return txt.replace(/\r\n/g, "\n");
 }
 
 /**
  * Extract mux-ready tx3g tracks from an MP4: frames/sizes/durations/timescale + SampleEntry.
- * @param ab ISO-BMFF bytes.
- * @returns Array of MuxTx3gTrack; SampleEntry preserves default styling when present.
  */
 export function extractTx3gMuxTracks(ab: ArrayBufferLike): MuxTx3gTrack[] {
   let moov: Box | undefined;
@@ -254,7 +251,7 @@ export function extractTx3gMuxTracks(ab: ArrayBufferLike): MuxTx3gTrack[] {
       sizes,
       durations,
       language,
-      makeSampleEntry: () => entry ? Buffer.from(entry) : undefined as any
+      makeSampleEntry: () => entry ?? undefined as any
     });
   });
 
@@ -263,11 +260,8 @@ export function extractTx3gMuxTracks(ab: ArrayBufferLike): MuxTx3gTrack[] {
 
 /**
  * Extract all tx3g tracks to timing tables and decoded cues.
- * @param ab ISO-BMFF bytes.
- * @returns { tracks, cues } where cues are in milliseconds.
  */
 export function extractAllTx3gTracks(ab: ArrayBufferLike): { tracks: Tx3gTrack[]; cues: Tx3gCue[][] } {
-  // Find moov
   let moov: Box | undefined;
   for (const b of boxes(ab)) if (b.type === "moov") { moov = b; break; }
   if (!moov) throw new Error("moov not found");
@@ -282,13 +276,12 @@ export function extractAllTx3gTracks(ab: ArrayBufferLike): { tracks: Tx3gTrack[]
     const hdlr = find(ab, mdia, ["hdlr"]);
     if (!hdlr) return;
     const htype = handlerType(ab, hdlr);
-    // 3GPP Timed Text uses handler 'text' or stsd entry 'tx3g'
     const minf = find(ab, mdia, ["minf"]); if (!minf) return;
     const stbl = find(ab, minf, ["stbl"]); if (!stbl) return;
     const stsd = find(ab, stbl, ["stsd"]); if (!stsd) return;
 
     let hasTx3g = false;
-    for (const e of boxes(ab, stsd.start + stsd.header + 8, stsd.end)) { // skip version/flags + entry_count
+    for (const e of boxes(ab, stsd.start + stsd.header + 8, stsd.end)) {
       if (e.type === "tx3g") { hasTx3g = true; break; }
     }
     if (!(htype === "text" || hasTx3g)) return;
@@ -325,10 +318,7 @@ export function extractAllTx3gTracks(ab: ArrayBufferLike): { tracks: Tx3gTrack[]
   return { tracks: outTracks, cues: outCues };
 }
 
-/**
- * Convert cues to SRT (with trailing newline).
- * @param cues Millisecond-based cues.
- */
+/** Convert cues to SRT (with trailing newline). */
 export function cuesToSrt(cues: Tx3gCue[]): string {
   const pad = (n: number, w: number) => String(n).padStart(w, "0");
   const fmt = (ms: number) => {

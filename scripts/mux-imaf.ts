@@ -133,7 +133,6 @@ if (Array.isArray(args.imaf) && args.imaf.length) imafJsonText = readArgPayload(
 // build opts pass-through (scripts do not interpret)
 const buildOpts: MuxBuildOptions = {
   pcmFrame: args["pcm-frame"] ? Number(args["pcm-frame"]) : undefined,
-  saocAscPath: typeof args["saoc-asc"] === "string" ? args["saoc-asc"] : undefined,
 };
 
 // Everything else: library work
