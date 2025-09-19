@@ -36,14 +36,7 @@ export type { SaocOptions } from "./codecs/saoc";
 // --- Demuxers / extractors ---
 export { extractAllTx3gTracks, cuesToSrt, extractTx3gMuxTracks } from "./demux/tx3g-demux";
 export type { Tx3gCue } from "./demux/tx3g-demux";
-export {
-    readIma,
-    buildAdtsStream,
-    buildMp3Stream,
-    buildWavFile,
-    buildTx3g3gpFile,
-    collectMpeg7Metas,
-} from "./demux/imaf-reader";
+export { readIma, collectMpeg7Metas } from "./demux/imaf-reader";
 
 // --- Demux helpers ---
 export { demuxImaToArtifacts } from "./demux/demux-helpers";
@@ -58,7 +51,13 @@ export { composeImaf } from "./mux/imaf-writer";
 export type { MpegBox } from "./demux/imaf-reader";
 
 // Mux helpers
-export { buildTracksFromInputs, normalizeCliMeta, resolveIncludeImaf } from "./mux/mux-helpers";
+export {
+    buildTracksFromInputs, normalizeCliMeta, resolveIncludeImaf,
+    buildAdtsStream,
+    buildMp3Stream,
+    buildWavFile,
+    buildTx3g3gpFile,
+} from "./mux/mux-helpers";
 export type { InputFile, MuxBuildOptions, NormalizedMeta } from "./mux/mux-helpers";
 export type { ComposeOptions } from "./mux/imaf-writer";
 

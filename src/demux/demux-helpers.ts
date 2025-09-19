@@ -49,9 +49,9 @@ const has = (set: Set<string>, t: string) => set.has("*") || set.has(t);
  */
 export function demuxImaToArtifacts(ab: ArrayBufferLike, opts: DemuxOptions = {}): DemuxResult {
   const wantAudio = opts.wantAudio !== false;
-  const wantText  = opts.wantText  !== false;
-  const wantMeta  = opts.wantMeta  !== false;
-  const wantImaf  = opts.wantImaf  !== false;
+  const wantText = opts.wantText !== false;
+  const wantMeta = opts.wantMeta !== false;
+  const wantImaf = opts.wantImaf !== false;
   const base = (opts.basename && opts.basename.trim()) || "out";
   const dbgSet = new Set((opts.debug ?? []).map(s => s.trim()).filter(Boolean));
   const logs: string[] = [];
@@ -68,7 +68,7 @@ export function demuxImaToArtifacts(ab: ArrayBufferLike, opts: DemuxOptions = {}
       aIdx++;
       const f2 = a.first2 ?? -1;
       const looksADTS = (f2 & 0xFFF6) === 0xFFF0;
-      const looksMP3  = (f2 & 0xFFE0) === 0xFFE0;
+      const looksMP3 = (f2 & 0xFFE0) === 0xFFE0;
 
       if (a.kind === "mp3" || looksMP3) {
         audioFiles.push({ name: `${base}.audio${aIdx}.mp3`, data: buildMp3Stream(a.frames) });
@@ -98,7 +98,7 @@ export function demuxImaToArtifacts(ab: ArrayBufferLike, opts: DemuxOptions = {}
     let tIdx = 0;
     for (const t of texts) {
       tIdx++;
-      const file = buildTx3g3gpFile(t.sampleEntry, t.frames, t.durations, t.timescale);
+      const file = buildTx3g3gpFile(t.sampleEntry, t.frames, t.durations, t.timescale, t.language);
       textFiles.push({ name: `${base}.subs${tIdx}.${t.language || "und"}.3gp`, data: file });
     }
   }
@@ -127,14 +127,14 @@ export function demuxImaToArtifacts(ab: ArrayBufferLike, opts: DemuxOptions = {}
       metas.album ? p("album (top-level meta)", metas.album.xml) : logs.push("[xml] album: not found");
       metas.song ? p("song (moov/udta/meta)", metas.song.xml) : logs.push("[xml] song: not found");
       metas.tracks.length ? metas.tracks.forEach(t => p(`track#${t.index} (trak/udta/meta)`, t.xml))
-                          : logs.push("[xml] tracks: none");
+        : logs.push("[xml] tracks: none");
     }
 
     const albumXml = metas.album?.xml ? decodeXmlBytes(metas.album.xml) : "";
-    const songXml  = metas.song ?.xml ? decodeXmlBytes(metas.song .xml) : "";
+    const songXml = metas.song?.xml ? decodeXmlBytes(metas.song.xml) : "";
 
     const albumMetaFull = withAlbumDefaults(albumXml ? mpeg7XmlToAlbum(albumXml) : {});
-    const songMetaFull  = withSongDefaults (songXml  ? mpeg7XmlToSong (songXml ) : {});
+    const songMetaFull = withSongDefaults(songXml ? mpeg7XmlToSong(songXml) : {});
 
     const tracksMetaFull = metas.tracks.map(t => {
       const xml = t.xml ? decodeXmlBytes(t.xml) : "";
